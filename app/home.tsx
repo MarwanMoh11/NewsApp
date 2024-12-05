@@ -291,7 +291,7 @@ const HomeScreen: React.FC = () => {
             {loading ? (
               <Text style={styles.loginText}>Loading...</Text>
             ) : (
-              <Text style={styles.loginText}>Login</Text>
+              <Text style={styles.loginText}>HEYYYYYYYYYYY</Text>
             )}
           </TouchableOpacity>
           {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}
