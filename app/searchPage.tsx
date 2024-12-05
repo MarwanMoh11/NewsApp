@@ -17,9 +17,8 @@ const FollowingPage: React.FC = () => {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const router = useRouter();
 
-  const domaindynamo = Platform.OS === 'web'
-    ?  'http://localhost:3000' // Use your local IP address for web
-    : 'http://192.168.100.2:3000';       // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
   useEffect(() => {
     fetchUsername();

@@ -19,9 +19,8 @@ export default function PreferencesScreen() {
     "Other": ['MONEY', 'SCIENCE', 'PARENTING', 'CRIME', 'DIVORCE', 'WOMEN'],
   };
 
-  const domaindynamo = Platform.OS === 'web'
-    ?  'http://localhost:3000' // Use your local IP address for web
-    : 'http://192.168.100.2:3000';       // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 
   // Fetch user data and preferences on mount

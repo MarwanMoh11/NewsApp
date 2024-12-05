@@ -4,9 +4,8 @@ import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/ui/ChronicallyButton';
 
-const domaindynamo = Platform.OS === 'web'
-  ? 'http://localhost:3000' // Use your local IP address for web
-  : 'http://192.168.100.2:3000'; // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(true);

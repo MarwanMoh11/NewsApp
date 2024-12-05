@@ -26,9 +26,8 @@ const HomePage: React.FC = () => {
     return `${hours}:${minutes} ${day}-${month}-${year}`;
   };
 
-const domaindynamo = Platform.OS === 'web'
-  ?  'http://localhost:3000' // Use your local IP address for web
-  : 'http://192.168.100.2:3000';       // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 
   const formatToUTCA = (isoDate: string) => {

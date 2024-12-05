@@ -4,3 +4,6 @@
 expo-env.d.ts
 /node_modules/
 # @end expo-cli
+
+# Local Netlify folder
+.netlify

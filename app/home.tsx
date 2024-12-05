@@ -48,10 +48,8 @@ export const createVerifierChallenge = () => {
 
 
 
-const domaindynamo = Platform.OS === 'web'
-  ?  'http://localhost:3000' // Use your local IP address for web
-  : 'http://192.168.100.2:3000';       // Use localhost for mobile emulator or device
-console.log("URI: " ,  redirectUri);
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 const HomeScreen: React.FC = () => {
   const router = useRouter();

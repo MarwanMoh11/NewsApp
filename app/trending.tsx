@@ -3,9 +3,8 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, Image, Platf
 import { useRouter } from 'expo-router';
 import CustomButton from '../components/ui/ChronicallyButton';
 
-const domaindynamo = Platform.OS === 'web'
-  ?  'http://localhost:3000' // Use your local IP address for web
-  : 'http://192.168.100.2:3000';       // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 const TrendingScreen: React.FC = () => {
   const [content, setContent] = useState<any[]>([]);

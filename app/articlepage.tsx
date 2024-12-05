@@ -14,9 +14,8 @@ import {
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 
-const domaindynamo = Platform.OS === 'web'
-  ?  'http://localhost:3000' // Use your local IP address for web
-  : 'http://10.40.52.159:3000';       // Use localhost for mobile emulator or device
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+
 
 const ArticlePage: React.FC = () => {
   const [articleData, setArticleData] = useState<any>(null);
