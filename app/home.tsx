@@ -1,18 +1,14 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet , Platform, Alert} from 'react-native';
+import React, { useState, useContext } from 'react';
+import { View, Text, TouchableOpacity, Image, StyleSheet, Platform, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
 import * as Network from 'expo-network';
+import { UserContext } from '../app/UserContext'; // Adjust path as needed
 
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
 const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
-
-const redirectUri = makeRedirectUri({
-  scheme: 'expo',
-  path: 'loginStatus',
-});
-
+const redirectUri = 'https://keen-alfajores-31c262.netlify.app/loginstatus';
 
 if (typeof Buffer === 'undefined') {
   global.Buffer = require('buffer').Buffer;
@@ -45,50 +41,46 @@ export const createVerifierChallenge = () => {
   });
 };
 
-
-
-
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const HomeScreen: React.FC = () => {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const { setUserToken } = useContext(UserContext);
 
   const handleReactivation = (Nickname: string) => {
-      // Send the reactivation request to the server
-      fetch(`${domaindynamo}/reactivate-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: Nickname }),
+    fetch(`${domaindynamo}/reactivate-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: Nickname }),
+    })
+      .then(() => {
+        router.push('/mynews');
       })
-        .then(() => {
-          router.push('/mynews');
-        })
-        .catch((error) => {
-          console.error('Error reactivating account:', error);
-        });
-    };
+      .catch((error) => {
+        console.error('Error reactivating account:', error);
+      });
+  };
 
-  // Setup the Auth request
   const [request, response, promptAsync] = useAuthRequest(
     {
       clientId,
       redirectUri,
-      scopes: ['openid', 'profile', 'email'], // Adjust the scopes you need
+      scopes: ['openid', 'profile', 'email'],
       usePKCE: false,
       prompt: 'login'
     },
     { authorizationEndpoint: `https://${domain}/authorize` }
   );
 
-  const handleUserRegistration = async (user) => {
+  const handleUserRegistration = async (user: any) => {
     console.log('User Info:', user);
     const { sub: token, nickname: Nickname, email: Email } = user;
     console.log('Token:', token);
     console.log('Nickname:', Nickname);
     console.log('Email:', Email);
+
     const url = `${domaindynamo}/sign-up`;
 
     try {
@@ -100,6 +92,7 @@ const HomeScreen: React.FC = () => {
 
       const checkData = await checkResponse.json();
 
+      // set-username to get a JWT token
       const setUsernameResponse = await fetch(`${domaindynamo}/set-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,8 +100,15 @@ const HomeScreen: React.FC = () => {
       });
 
       const setUsernameData = await setUsernameResponse.json();
-      console.log('Username set successfully');
-      router.push('/mynews');
+      console.log('Set Username Response:', setUsernameData);
+
+      if (setUsernameData.status === 'Success' && setUsernameData.token) {
+        const obtainedToken = setUsernameData.token;
+        setUserToken(obtainedToken); // Store in global context
+        console.log('Username set successfully and token received:', obtainedToken);
+      } else {
+        console.warn('No token received from set-username response.');
+      }
 
       if (checkData.message === 'Username or email is already registered') {
         const activationstatus = await fetch(`${domaindynamo}/check-login`, {
@@ -120,14 +120,13 @@ const HomeScreen: React.FC = () => {
         const activationstatusData = await activationstatus.json();
 
         if (activationstatusData.message === 'Account is deactivated') {
-            if (Platform.OS === 'web') {
+          if (Platform.OS === 'web') {
             const userConfirmed = window.confirm(
               'Account Reactivation\n\nYour account is currently deactivated. Would you like to reactivate it?'
             );
             if (userConfirmed) {
               handleReactivation(Nickname);
-            }
-            else{
+            } else {
               router.push('/home');
             }
           } else {
@@ -157,12 +156,11 @@ const HomeScreen: React.FC = () => {
     const tokenEndpoint = `https://${domain}/oauth/token`;
     console.log('TokenEndpoint: ', tokenEndpoint);
 
-    // Log the request payload for debugging
     const requestBody = {
       grant_type: 'authorization_code',
       client_id: clientId,
       code,
-       redirect_uri: redirectUri,
+      redirect_uri: redirectUri,
     };
     console.log('Request Body:', requestBody);
 
@@ -173,13 +171,11 @@ const HomeScreen: React.FC = () => {
         body: JSON.stringify(requestBody),
       });
 
-      // Log the response status and response body (if possible) for debugging
       console.log('Response Status:', response.status);
-      const responseBody = await response.text(); // Read response body as text to log
+      const responseBody = await response.text();
       console.log('Response Body:', responseBody);
 
       if (!response.ok) {
-        // If response is not ok, log the full error message
         throw new Error(`Token exchange failed with status ${response.status}: ${responseBody}`);
       }
 
@@ -190,7 +186,6 @@ const HomeScreen: React.FC = () => {
         headers: { Authorization: `Bearer ${data.access_token}` },
       });
 
-      // Log the user info response status and body
       console.log('User Info Response Status:', userInfoResponse.status);
       const userInfoResponseBody = await userInfoResponse.text();
       console.log('User Info Response Body:', userInfoResponseBody);
@@ -212,71 +207,62 @@ const HomeScreen: React.FC = () => {
   };
 
   const handleLogin = async () => {
-       setLoading(true);
-       setErrorMessage('');
-      if(Platform.OS == "web"){
-          const authWindow = window.open(
-                `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid profile email&prompt=login`,
-                'Auth0 Login',
-                'width=500,height=600'
-              );
+    setLoading(true);
+    setErrorMessage('');
+    if (Platform.OS === 'web') {
+      const authWindow = window.open(
+        `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=openid profile email&prompt=login`,
+        'Auth0 Login',
+        'width=500,height=600'
+      );
 
-              const interval = setInterval(() => {
-                try {
-                  if (authWindow && authWindow.closed) {
-                    clearInterval(interval);
-                    setLoading(false);
-                  }
+      const interval = setInterval(() => {
+        try {
+          if (authWindow && authWindow.closed) {
+            clearInterval(interval);
+            setLoading(false);
+          }
 
-                  if (authWindow && authWindow.location.href.includes(redirectUri)) {
-                    const params = new URL(authWindow.location.href).searchParams;
-                    const code = params.get('code');
+          if (authWindow.location.href.includes(redirectUri)) {
+            const params = new URL(authWindow.location.href).searchParams;
+            const code = params.get('code');
 
-                    if (code) {
-                      clearInterval(interval);
-                      authWindow.close();
+            if (code) {
+              clearInterval(interval);
+              authWindow.close();
 
-                      exchangeToken(code)
-                        .catch((error) => {
-                          setErrorMessage('Failed to complete login.');
-                          console.error(error);
-                        });
-                    }
-                  }
-                } catch (error) {
-                  // Ignore cross-origin errors
-                }
-              }, 500);
-          }else{
-                try {
-                  if (request) {
-                    //  const [verifier, challenge] = await createVerifierChallenge();
-                    // future implementation of added security
+              exchangeToken(code)
+                .catch((error) => {
+                  setErrorMessage('Failed to complete login.');
+                  console.error(error);
+                });
+            }
+          }
+        } catch (error) {
+          // Ignore cross-origin errors
+        }
+      }, 500);
+    } else {
+      try {
+        if (request) {
+          const result = await promptAsync();
+          console.log('PromptAsync Result:', result);
 
-
-
-                    const result = await promptAsync();
-
-                    console.log('PromptAsync Result:', result);
-
-                    if (result && result.params && result.params.code) {
-                      console.log('Authorization Code:', result.params.code);
-
-                      // Exchange token
-                      await exchangeToken(result.params.code);
-                      console.log('Token exchange completed');
-                    } else {
-                      throw new Error('Authorization code not found in result');
-                    }
-                  }
-                } catch (error) {
-                  setLoading(false);
-                  console.error('Error during login process:', error);
-                  setErrorMessage('Login failed');
-                }
-}
-
-    };
+          if (result && result.params && result.params.code) {
+            console.log('Authorization Code:', result.params.code);
+            await exchangeToken(result.params.code);
+            console.log('Token exchange completed');
+          } else {
+            throw new Error('Authorization code not found in result');
+          }
+        }
+      } catch (error) {
+        setLoading(false);
+        console.error('Error during login process:', error);
+        setErrorMessage('Login failed');
+      }
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -291,7 +277,7 @@ const HomeScreen: React.FC = () => {
             {loading ? (
               <Text style={styles.loginText}>Loading...</Text>
             ) : (
-              <Text style={styles.loginText}>HEYYYYYYYYYYY</Text>
+              <Text style={styles.loginText}>Login</Text>
             )}
           </TouchableOpacity>
           {errorMessage ? <Text style={styles.errorMessage}>{errorMessage}</Text> : null}

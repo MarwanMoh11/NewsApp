@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,9 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { UserContext } from '../app/UserContext'; // adjust path if needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const ArticlePage: React.FC = () => {
   const [articleData, setArticleData] = useState<any>(null);
@@ -23,12 +23,16 @@ const ArticlePage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [allComments, setAllComments] = useState([]);
   const [comment, setComment] = useState('');
+
   const router = useRouter();
+  const { userToken } = useContext(UserContext);
 
   useEffect(() => {
-    fetchArticleIdAndDetails();
+    if (userToken) {
       fetchUsername();
-  }, []);
+      fetchArticleIdAndDetails();
+    }
+  }, [userToken]);
 
   useEffect(() => {
     if (articleData) {
@@ -36,19 +40,41 @@ const ArticlePage: React.FC = () => {
     }
   }, [articleData]);
 
-const formatToUTCA = (isoDate: string) => {
-  const date = new Date(isoDate);
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const year = date.getUTCFullYear();
-  return `${day}-${month}-${year}`;
-};
+  const formatToUTCA = (isoDate: string) => {
+    const date = new Date(isoDate);
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const year = date.getUTCFullYear();
+    return `${day}-${month}-${year}`;
+  };
 
-
+  const fetchUsername = async () => {
+    if (!userToken) return;
+    try {
+      const response = await fetch(`${domaindynamo}/get-username`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken })
+      });
+      const data = await response.json();
+      if (data.status === 'Success' && data.username) {
+        setUsername(data.username);
+      } else {
+        setUsername('');
+      }
+    } catch (error) {
+      console.error('Error fetching username:', error);
+      setUsername('Guest');
+    }
+  };
 
   const fetchArticleIdAndDetails = async () => {
     try {
-      const idResponse = await fetch(`${domaindynamo}/get-article-id`);
+      const idResponse = await fetch(`${domaindynamo}/get-article-id`,{
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({ token: userToken })
+          });
       if (!idResponse.ok) {
         throw new Error('Failed to fetch article ID');
       }
@@ -78,7 +104,6 @@ const formatToUTCA = (isoDate: string) => {
       }
 
       const data = await response.json();
-      console.log('article dets: ', data);
       if (data.status === 'Article found') {
         setArticleData(data.data);
       } else {
@@ -115,79 +140,90 @@ const formatToUTCA = (isoDate: string) => {
   };
 
   const fetchComments = async () => {
-    const response = await fetch(`${domaindynamo}/get_comments_article`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ article_id : articleData.id }),
-    })
-
-    const data = await response.json();
-
-    if(response.ok){
-      console.log('comments: ', data.data);
-      setAllComments(data.data);
-    }
-    else{
-      console.log('no comments');
-      setAllComments([]);
-    }
-  }
-
-  const postComment = async (comment : string) => {
-    console.log('ID: ', articleData.id, 'Username: ', username, 'Content: ', comment);
-    const response = await fetch(`${domaindynamo}/comment_article`, {
+    if (!articleData) return;
+    try {
+      const response = await fetch(`${domaindynamo}/get_comments_article`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ article_id: articleData.id, username: username, content: comment, parent_comment_id: null }),
-    })
+        body: JSON.stringify({ article_id: articleData.id }),
+      });
 
-    if(response.ok) {
-      if(Platform.OS=='web'){
-        alert('Sucess: Comment has been posted');
-        router.push('/articlepage');
-      }else{
-        Alert.alert('Sucess','Comment has been posted');
-      }
-    }
-    else
-    {
-      if(Platform.OS=='web'){
-        alert('Error: could not post comment');
-      }else{
-        Alert.alert('Error','Could not post comment');
-      }
-    }
-  }
+      const data = await response.json();
 
-  const handleLike = () => {
-    Alert.alert('Liked', 'You liked this article!');
+      if (response.ok && data.status === 'Success') {
+        setAllComments(data.data);
+      } else {
+        setAllComments([]);
+      }
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      setAllComments([]);
+    }
   };
 
-  //article share old
-  const handleShare = async () => {
+  const postComment = async (comment: string) => {
+    if (!userToken || !articleData) {
+      Alert.alert('Error', 'You must be logged in and have an article loaded to comment.');
+      return;
+    }
+
     try {
-      const response = await fetch(`${domaindynamo}:3000/get-username`);
-      const data = await response.json();
-      if (data.username) {
-        await fetch(`${domaindynamo}/share_articles`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: data.username,
-            article_id: articleData.id,
-          }),
-        });
+      const response = await fetch(`${domaindynamo}/comment_article`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // We still send username and article_id. Ideally, decode username from token on server.
+        // If your backend now uses token, send { token: userToken, content: comment, parent_comment_id: null, article_id: articleData.id }
+        body: JSON.stringify({ article_id: articleData.id, username, content: comment, parent_comment_id: null }),
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok && responseData.status === 'Success') {
         if (Platform.OS === 'web') {
-          alert('Article shared successfully!');
+          alert('Success: Comment has been posted');
+          router.push('/articlepage');
         } else {
-          Alert.alert('Success', 'Article shared successfully!');
+          Alert.alert('Success', 'Comment has been posted');
         }
+        // Refresh comments
+        setComment('');
+        fetchComments();
       } else {
-        if (Platform.OS === 'web') {
-          alert('Unable to share article');
-        } else {
-          Alert.alert('Error', 'Unable to share article');
-        }
+        Platform.OS === 'web'
+          ? alert('Error: could not post comment')
+          : Alert.alert('Error', 'Could not post comment');
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      Platform.OS === 'web'
+        ? alert('Error: could not post comment')
+        : Alert.alert('Error', 'Could not post comment');
+    }
+  };
+
+  const handleShare = async (articleId: number) => {
+    if (!userToken) {
+      Alert.alert('Error', 'You must be logged in to share articles.');
+      return;
+    }
+
+    try {
+      // Use token-based endpoint for share_articles (assuming backend updated)
+      const response = await fetch(`${domaindynamo}/share_articles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, article_id: articleId }),
+      });
+      const data = await response.json();
+
+      if (response.ok && data.status === 'Success') {
+        Platform.OS === 'web'
+          ? alert('Article shared successfully!')
+          : Alert.alert('Success', 'Article shared successfully!');
+      } else {
+        Platform.OS === 'web'
+          ? alert('Unable to share article')
+          : Alert.alert('Error', 'Unable to share article');
       }
     } catch (error) {
       console.error('Error sharing article', error);
@@ -225,81 +261,46 @@ const formatToUTCA = (isoDate: string) => {
     }
   };
 
-
-  const fetchUsername = async () => {
-    try {
-      const response = await fetch(`${domaindynamo}/get-username`);
-      const data = await response.json();
-      if (data.username) {
-        setUsername(data.username);
-      } else {
-        setUsername('');
-      }
-    } catch (error) {
-      console.error('Error fetching username:', error);
-      setUsername('Guest');
+  const handleSave = async () => {
+    if (!userToken || !articleData) {
+      Alert.alert('Error', 'You must be logged in and have an article loaded to save.');
+      return;
     }
-  };
 
-const handleSave = async (tweetLink: string) => {
-  if (username !== '') {
     try {
-      // Make a POST request to save the article
+      // Update this endpoint similarly if it requires token decoding of username
       const response = await fetch(`${domaindynamo}/save-articles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username,
-          article_id: articleData.id,
-        }),
+        body: JSON.stringify({ token: userToken, article_id: articleData.id }),
       });
 
-      // Log response status and data for debugging
       const responseData = await response.json();
-      console.log("Server Response:", responseData);
-
-      if (response.ok) {
-        if (Platform.OS === 'web') {
-          alert('Article saved successfully!');
-        } else {
-          Alert.alert('Success', 'Article saved successfully!');
-        }
+      if (response.ok && responseData.status === 'Success') {
+        Platform.OS === 'web'
+          ? alert('Article saved successfully!')
+          : Alert.alert('Success', 'Article saved successfully!');
       } else {
-        // Handle the error if the article couldn't be saved
-        if (Platform.OS === 'web') {
-          alert(`Error: ${responseData.message || 'Article could not be saved'}`);
-        } else {
-          Alert.alert('Error', responseData.message || 'Article could not be saved');
-        }
+        Platform.OS === 'web'
+          ? alert(`Error: ${responseData.message || 'Article could not be saved'}`)
+          : Alert.alert('Error', responseData.message || 'Article could not be saved');
       }
     } catch (error) {
       console.error('Error saving Article', error);
-      if (Platform.OS === 'web') {
-        alert('Error: Unable to save Article');
-      } else {
-        Alert.alert('Error', 'Unable to save Article');
-      }
+      Platform.OS === 'web'
+        ? alert('Error: Unable to save Article')
+        : Alert.alert('Error', 'Unable to save Article');
     }
-  } else {
-    // Handle the case where the user is not logged in (no username)
-    if (Platform.OS === 'web') {
-      alert('Please log in to save Articles');
-    } else {
-      Alert.alert('Error', 'Please log in to save Articles');
-    }
-  }
-};
-
-const renderCommentCard = ({ item }) => {
-  console.log('rendering comment: ', item);
-
-  const formatDate = (isoDate) => {
-    const date = new Date(isoDate);
-    return date.toLocaleString(); // Adjust format as needed
   };
 
-  return (
-  <View style={styles.commentCard}>
+  const renderCommentCard = ({ item }) => {
+    const formatDate = (isoDate) => {
+      const date = new Date(isoDate);
+      return date.toLocaleString();
+    };
+
+    return (
+      <View style={styles.commentCard}>
         <View style={styles.cardContent}>
           <Icon name="person" size={30} style={styles.userIcon} />
           <View>
@@ -309,8 +310,8 @@ const renderCommentCard = ({ item }) => {
         </View>
         <Text style={styles.commentText}>{item.content}</Text>
       </View>
-  );
-};
+    );
+  };
 
   return (
     <ScrollView style={styles.container}>
@@ -338,44 +339,41 @@ const renderCommentCard = ({ item }) => {
           </TouchableOpacity>
 
           <View style={styles.actionIcons}>
-          <TouchableOpacity onPress={() => handleSave(articleData.Article_Link)}>
-            <Icon name="bookmark-outline" size={30} color="#A1A0FE" />
+            <TouchableOpacity onPress={handleSave}>
+              <Icon name="bookmark-outline" size={30} color="#A1A0FE" />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleLike}>
-              <Icon name="heart-outline" size={30} color="#A1A0FE" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleShare}>
+            <TouchableOpacity onPress={() => handleShare(articleData.id)}>
               <Icon name="share-outline" size={30} color="#A1A0FE" />
             </TouchableOpacity>
           </View>
-          <View style={styles.commentContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Type your comment..."
-            placeholderTextColor="#FFFF00"
-            value={comment}
-            onChangeText={(text) => setComment(text)} // Ensure the input field updates
-          />
-          <TouchableOpacity
-            style={styles.postCommentButton}
-            onPress={() => postComment(comment)}
-          >
-            <Text style={styles.postButtonText}>Post Comment</Text>
-          </TouchableOpacity>
-          <FlatList
-            data={allComments}
-            renderItem={renderCommentCard}
-            keyExtractor={(item) => item.comment_id}
-            contentContainerStyle={styles.commentCard}
-            ListEmptyComponent={
-              <Text style={styles.noComments}>
-                No comments yet. Be the first to comment!
-              </Text>
-            }
-        />
-        </View>
-        </View>
 
+          <View style={styles.commentContainer}>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Type your comment..."
+              placeholderTextColor="#FFFF00"
+              value={comment}
+              onChangeText={(text) => setComment(text)}
+            />
+            <TouchableOpacity
+              style={styles.postCommentButton}
+              onPress={() => postComment(comment)}
+            >
+              <Text style={styles.postButtonText}>Post Comment</Text>
+            </TouchableOpacity>
+            <FlatList
+              data={allComments}
+              renderItem={renderCommentCard}
+              keyExtractor={(item) => item.comment_id.toString()}
+              contentContainerStyle={styles.commentCard}
+              ListEmptyComponent={
+                <Text style={styles.noComments}>
+                  No comments yet. Be the first to comment!
+                </Text>
+              }
+            />
+          </View>
+        </View>
       ) : (
         <Text style={styles.loadingText}>Loading article details...</Text>
       )}
@@ -394,8 +392,6 @@ const renderCommentCard = ({ item }) => {
     </ScrollView>
   );
 };
-
-
 
 const styles = StyleSheet.create({
   container: {
@@ -520,7 +516,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000',
     textAlign: 'left',
-    marginTop:5,
+    marginTop: 5,
     paddingLeft: 25,
   },
   commentInput: {

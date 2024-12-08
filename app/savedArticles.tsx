@@ -1,18 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, FlatList, Alert, Image,  ActivityIndicator, Platform} from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, FlatList, Alert, Image, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import CustomButton from '../components/ui/ChronicallyButton';
+import { UserContext } from '../app/UserContext'; // Adjust path as needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
-
-const HomePage: React.FC = () => {
+const SavedArticles: React.FC = () => {
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [articlesAndTweets, setArticlesAndTweets] = useState<any[]>([]);
   const [username, setUsername] = useState('');
   const router = useRouter();
+  const { userToken, setUserToken } = useContext(UserContext); // Access token
+
   const formatToUTCT = (isoDate: string) => {
     const date = new Date(isoDate);
     const hours = String(date.getUTCHours()).padStart(2, '0');
@@ -20,32 +22,41 @@ const HomePage: React.FC = () => {
     const day = String(date.getUTCDate()).padStart(2, '0');
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
     const year = date.getUTCFullYear();
-
     return `${hours}:${minutes} ${day}-${month}-${year}`;
   };
+
   const formatToUTCA = (isoDate: string) => {
     const date = new Date(isoDate);
     const day = String(date.getUTCDate()).padStart(2, '0');
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
     const year = date.getUTCFullYear();
-
     return `${day}-${month}-${year}`;
   };
 
   useEffect(() => {
+    // Once we have a token, we can fetch the username and then fetch saved content
+    if (userToken) {
+      fetchUsername();
+    }
+  }, [userToken]);
+
+  useEffect(() => {
     if (username) {
-      console.log('Username is set:', username);
       fetchContent();
     }
   }, [username]);
 
-
   const fetchUsername = async () => {
+    if (!userToken) return;
     try {
-      const response = await fetch(`${domaindynamo}/get-username`);
+      const response = await fetch(`${domaindynamo}/get-username`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken })
+      });
       const data = await response.json();
-      if (data.username) {
-        setUsername(data.username)
+      if (data.status === 'Success' && data.username) {
+        setUsername(data.username);
       } else {
         setUsername('');
       }
@@ -55,73 +66,44 @@ const HomePage: React.FC = () => {
     }
   };
 
-  const handleContentPressLive = async (item: any) => {
-        console.log('Item:', item);
-        console.log('Request Body:', JSON.stringify({ tweet: item }));
-        try {
-          const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tweet: item }),
-          });
-
-          console.log('Response Status:', response.status);
-          const data = await response.json();
-          console.log('Response Data:', data);
-
-          if (data.status === 'Success') {
-            router.push('/tweetpage');
-          } else {
-            Alert.alert('Error', 'Failed to set tweet data');
-          }
-        } catch (error) {
-          console.error('Error setting tweet data:', error);
-          Alert.alert('Error', 'Unable to set tweet data');
-        }
-    };
-
-
   const fetchContent = async () => {
-    if (!username) {
-      console.error('Username is required for fetching content.');
+    if (!userToken) {
+      console.error('Token is required for fetching content.');
       return;
     }
     try {
       const response = await fetch(`${domaindynamo}/show-saved`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: username }), // backend should decode username
       });
 
-      const responseClone = response.clone();
-
-      const textResponse = await responseClone.text();
-
+      const textResponse = await response.clone().text();
       console.log('Server response:', textResponse);
-    const data = await response.json();
-    if (!data.data) throw new Error('Saved content not found');
-    console.log(data.data);
 
-    const detailedContent = await Promise.all(
-      data.data.map(async (item) => {
-        if (item.type === 'article') {
-          return { ...item, content_data: await fetchArticleContent(item.id) };
-        } else if (item.type === 'tweet') {
-          return { ...item, content_data: await fetchTweetContent(item.id) };
-        }
-        return item;
-      })
-    );
+      const data = await response.json();
+      if (!data.data) throw new Error('Saved content not found');
+      console.log(data.data);
 
-    setArticlesAndTweets(detailedContent);
-  } catch (err) {
-    console.error('Error fetching shared content:', err);
-    setError(err.message || 'Error fetching shared content');
-  } finally {
-    setLoading(false);
-  }
+      const detailedContent = await Promise.all(
+        data.data.map(async (item: any) => {
+          if (item.type === 'article') {
+            return { ...item, content_data: await fetchArticleContent(item.id) };
+          } else if (item.type === 'tweet') {
+            return { ...item, content_data: await fetchTweetContent(item.id) };
+          }
+          return item;
+        })
+      );
+
+      setArticlesAndTweets(detailedContent);
+    } catch (err: any) {
+      console.error('Error fetching saved content:', err);
+      setError(err.message || 'Error fetching saved content');
+    } finally {
+      setLoading(false);
+    }
   };
-
 
   const fetchArticleContent = async (id: number) => {
     try {
@@ -138,7 +120,7 @@ const HomePage: React.FC = () => {
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch article content');
 
       return data.data; // The article data
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error in fetchArticleContent: ${error.message}`);
       return null; // Return null to handle gracefully
     }
@@ -159,15 +141,48 @@ const HomePage: React.FC = () => {
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch tweet content');
 
       return data.data; // The tweet data
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error in fetchTweetContent: ${error.message}`);
       return null; // Return null to handle gracefully
     }
   };
 
+  const handleContentPressLive = async (item: any) => {
+    if (!userToken) {
+      Alert.alert('Error', 'You must be logged in to view tweets.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, tweet: item }),
+      });
+
+      console.log('Response Status:', response.status);
+      const data = await response.json();
+      console.log('Response Data:', data);
+
+      if (data.status === 'Success') {
+          setUserToken(data.token);
+        router.push('/tweetpage');
+      } else {
+        Alert.alert('Error', 'Failed to set tweet data');
+      }
+    } catch (error) {
+      console.error('Error setting tweet data:', error);
+      Alert.alert('Error', 'Unable to set tweet data');
+    }
+  };
 
   const handleContentPress = async (item: any) => {
     if (item.type === 'tweet') {
+      if (!userToken) {
+        Alert.alert('Error', 'You must be logged in to view tweets.');
+        return;
+      }
+
       try {
         const response = await fetch(`${domaindynamo}/set-tweet-link`, {
           method: 'POST',
@@ -190,7 +205,7 @@ const HomePage: React.FC = () => {
         const response = await fetch(`${domaindynamo}/set-article-id`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: item.id }),
+          body: JSON.stringify({token: userToken, id: item.id }),
         });
 
         const data = await response.json();
@@ -206,13 +221,9 @@ const HomePage: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    fetchUsername();
-  }, []);
-
   const renderContentCard = ({ item }: { item: any }) => {
     console.log('Rendering: ', item);
-    if (item.type === 'article') {
+    if (item.type === 'article' && item.content_data) {
       return (
         <TouchableOpacity style={styles.articleCard} onPress={() => handleContentPress(item)}>
           <Image source={require('../assets/images/logo.png')} style={styles.logoImage} />
@@ -221,20 +232,21 @@ const HomePage: React.FC = () => {
           <Text style={styles.articleDate}>{formatToUTCA(item.date)}</Text>
         </TouchableOpacity>
       );
-    } else if (item.type === 'tweet') {
+    } else if (item.type === 'tweet' && item.content_data) {
       return (
         <TouchableOpacity style={styles.tweetCard} onPress={() => handleContentPressLive(item.content_data)}>
           <Image source={{ uri: item.content_data.Media_URL }} style={styles.tweetImage} />
           <Text style={styles.tweetUsername}>{item.content_data.Username}</Text>
           <Text style={styles.tweetDate}>{formatToUTCT(item.content_data.Created_At)}</Text>
           <Text style={styles.tweetText} numberOfLines={3} ellipsizeMode="tail">
-            {item.Tweet}
+            {item.content_data.Tweet}
           </Text>
         </TouchableOpacity>
       );
     }
     return null;
   };
+
   const [isButtonVisible, setIsButtonVisible] = useState(true);
 
   const handleScroll = (event: any) => {
@@ -285,7 +297,7 @@ const HomePage: React.FC = () => {
       <FlatList
         data={articlesAndTweets}
         renderItem={renderContentCard}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => `${item.type}-${index}`}
         contentContainerStyle={styles.contentContainer}
         onScroll={handleScroll}
         scrollEventThrottle={16}
@@ -310,7 +322,7 @@ const HomePage: React.FC = () => {
   );
 };
 
-export default HomePage;
+export default SavedArticles;
 
 
 const styles = StyleSheet.create({
@@ -323,9 +335,18 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#888',
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: 20,
     marginTop: 40,
@@ -333,61 +354,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E0E0E0',
     paddingBottom: 10,
   },
-  tabsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    flex: 1,
-  },
-  tabButton: {
-    marginHorizontal: 20,
-    paddingBottom: 5,
-  },
-  tabText: {
-    fontSize: 18,
-    color: '#888',
-  },
-  activeTabButton: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#A1A0FE',
-  },
-  activeTabText: {
-    color: '#333',
-    fontWeight: 'bold',
-  },
   settingsIcon: {
     position: 'absolute',
     right: 20,
-  },
-  filterContainer: {
-    marginVertical: 10,
-    alignItems: 'center',
-  },
-  filterScroll: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryWrapper: {
-    flexDirection: 'row',
-  },
-  filterButton: {
-    backgroundColor: '#FFFF',
-    borderRadius: 20,
-    paddingVertical: 5,
-    paddingHorizontal: 15,
-    marginHorizontal: 5,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-  },
-  filterButtonActive: {
-    backgroundColor: '#A1A0FE',
-    borderColor: '#FFFFFF'
-  },
-  filterText: {
-    color: '#000000',
-  },
-  filterTextActive: {
-    color: '#FFFFFF',
   },
   contentContainer: {
     paddingHorizontal: 15,
@@ -412,11 +381,6 @@ const styles = StyleSheet.create({
   articleDate: {
     fontSize: 12,
     color: '#333333',
-  },
-  articleDescription: {
-    fontSize: 14,
-    color: '#555555',
-    marginTop: 5,
   },
   tweetCard: {
     backgroundColor: '#2A2B2E',

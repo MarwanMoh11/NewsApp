@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -14,22 +14,24 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
-import * as Network from 'expo-network';
+import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const TweetPage: React.FC = () => {
   const [tweetData, setTweetData] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [comment, setComment] = useState('');
-  const [ip,setip] = useState('');
   const [allComments, setAllComments] = useState([]);
   const router = useRouter();
+  const { userToken } = useContext(UserContext);
 
   useEffect(() => {
-    getTweet();
-    fetchUsername();
-  }, []);
+    if (userToken) {
+      getTweet();
+      fetchUsername();
+    }
+  }, [userToken]);
 
   useEffect(() => {
     if (tweetData) {
@@ -38,10 +40,15 @@ const TweetPage: React.FC = () => {
   }, [tweetData]);
 
   const fetchUsername = async () => {
+    if (!userToken) return;
     try {
-      const response = await fetch(`${domaindynamo}/get-username`);
+      const response = await fetch(`${domaindynamo}/get-username`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken })
+      });
       const data = await response.json();
-      if (data.username) {
+      if (data.status === 'Success' && data.username) {
         setUsername(data.username);
       } else {
         setUsername('');
@@ -52,94 +59,76 @@ const TweetPage: React.FC = () => {
     }
   };
 
-  const fetchip = async () =>{
-      const ipaddress = await Network.getIpAddressAsync();
-      setip(ipaddress);
-      console.log('ip address: ', ipaddress);
-        };
-
   const getTweet = async () => {
-  try {
-    const response = await fetch(`${domaindynamo}/get-tweettodisp`);
-    const data = await response.json();
-    if (data.status === 'Success') {
-      setTweetData(data.data);
-    } else {
-      Alert.alert('Error', 'No tweet data found');
-    }
-  } catch (error) {
-    console.error('Error fetching tweet data:', error);
-    Alert.alert('Error', 'Unable to fetch tweet data');
-  }
-};
-
-  const fetchTweetLink = async () => {
+    if (!userToken) return;
     try {
-      const response = await fetch(`${domaindynamo}/get-tweet-link`);
-      const data = await response.json();
-      if (data.tweetLink) {
-        fetchTweetDetails(data.tweetLink);
-      } else {
-        Alert.alert('Error', 'No tweet link set');
-      }
-    } catch (error) {
-      console.error('Error fetching tweet link:', error);
-      Alert.alert('Error', 'Unable to fetch tweet link');
-    }
-  };
-
-  const fetchTweetDetails = async (link: string) => {
-    try {
-      const response = await fetch(`${domaindynamo}/get-tweet-by-link`, {
+      const response = await fetch(`${domaindynamo}/get-tweettodisp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ link }),
+        body: JSON.stringify({ token: userToken })
       });
       const data = await response.json();
-      if (data.status === 'Tweet found') {
+      if (data.status === 'Success') {
         setTweetData(data.data);
       } else {
-        Alert.alert('Error', 'No tweet found with the given link');
+        Alert.alert('Error', 'No tweet data found');
       }
     } catch (error) {
-      console.error('Error fetching tweet details:', error);
-      Alert.alert('Error', 'Unable to fetch tweet details');
+      console.error('Error fetching tweet data:', error);
+      Alert.alert('Error', 'Unable to fetch tweet data');
     }
   };
 
-  const handleShare = async (tweetLink:string) => {
-    if(username != ''){
-      try {
-        const response = await fetch(`${domaindynamo}/get-username`);
-        const data = await response.json();
-        if (data.username) {
-          await fetch(`${domaindynamo}/share_tweets`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              username: data.username,
-              tweet_link: tweetLink,
-            }),
-          });
-          if(Platform.OS=='web'){
-            alert('Tweet shared successfully!');
-          }else{
-            Alert.alert('Success','Tweet shared successfully!');
-          }
-        } else {
-          if(Platform.OS=='web'){
-            alert('Unable to share tweet');
-          }else{
-            Alert.alert('Error','Unable to share tweet');
-          }
-        }
-      } catch (error) {
-        console.error('Error sharing article', error);
-        Alert.alert('Error', 'Unable to share tweet');
+  const fetchComments = async () => {
+    if (!userToken || !tweetData) return;
+    try {
+      const response = await fetch(`${domaindynamo}/get_comments_tweet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, tweet_link: tweetData.Tweet_Link })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.status === 'Success') {
+        setAllComments(data.data);
+      } else {
+        setAllComments([]);
       }
+    } catch (error) {
+      console.error('Error fetching comments:', error);
+      setAllComments([]);
     }
   };
 
+  const handleShare = async (tweetLink: string) => {
+    if (!userToken) {
+      Alert.alert('Error', 'You must be logged in to share tweets.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${domaindynamo}/share_tweets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
+      });
+
+      const data = await response.json();
+      if (data.status === 'Success') {
+        Platform.OS === 'web'
+          ? alert('Tweet shared successfully!')
+          : Alert.alert('Success', 'Tweet shared successfully!');
+      } else {
+        Platform.OS === 'web'
+          ? alert('Unable to share tweet')
+          : Alert.alert('Error', 'Unable to share tweet');
+      }
+    } catch (error) {
+      console.error('Error sharing tweet', error);
+      Alert.alert('Error', 'Unable to share tweet');
+    }
+  };
 
   const handleMediaPress = (tweetLink: string) => {
     Linking.openURL(tweetLink).catch((err) =>
@@ -148,90 +137,71 @@ const TweetPage: React.FC = () => {
   };
 
   const handleSave = async (tweetLink: string) => {
-    const response = await fetch(`${domaindynamo}/save-tweets`,{
+    if (!userToken) {
+      Alert.alert('Error', 'You must be logged in to save tweets.');
+      return;
+    }
+
+    const response = await fetch(`${domaindynamo}/save-tweets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username, tweet_link: tweetLink }),
+      body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
     });
 
-    if(response.ok){
-      if(Platform.OS=='web'){
-        alert('Tweet saved successfully!');
-      }else{
-        Alert.alert('Success','Tweet saved successfully!');
-      }
-    }else{
-      if(Platform.OS=='web'){
-        alert('Error: Tweet could not be saved');
-      }else{
-        Alert.alert('Error','Tweet could not be saved');
-      }
+    const data = await response.json();
+    if (response.ok && data.status === 'Success') {
+      Platform.OS === 'web'
+        ? alert('Tweet saved successfully!')
+        : Alert.alert('Success', 'Tweet saved successfully!');
+    } else {
+      Platform.OS === 'web'
+        ? alert('Error: Tweet could not be saved')
+        : Alert.alert('Error', 'Tweet could not be saved');
     }
   };
 
-  const fetchComments = async () => {
-    const response = await fetch(`${domaindynamo}/get_comments_tweet`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tweet_link : tweetData.Tweet_Link }),
-    })
-
-    const data = await response.json();
-
-    if(response.ok){
-      console.log('comments: ', data.data);
-      setAllComments(data.data);
-    }
-    else{
-      console.log('no comments');
-      setAllComments([]);
-    }
-  }
-
   const postComment = async (comment: string) => {
-  console.log('Link:', tweetData.Tweet_Link, 'Username:', username, 'Content:', comment);
-  const requestBody = JSON.stringify({ tweet_link: tweetData.Tweet_Link, username: username, content: comment, parent_comment_id: null });
-  console.log('Request Body:', requestBody);
-
-  try {
-    const response = await fetch(`${domaindynamo}/comment_tweet`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: requestBody,
-    });
-
-    console.log('Response Status:', response.status);
-    const responseData = await response.json();
-    console.log('Response Data:', responseData);
-
-    if (response.ok) {
-      if (Platform.OS === 'web') {
-        alert('Success: Comment has been posted');
-        router.push('/tweetpage');
-      } else {
-        Alert.alert('Success', 'Comment has been posted');
-      }
-    } else {
-      if (Platform.OS === 'web') {
-        alert('Error: could not post comment');
-      } else {
-        Alert.alert('Error', 'Could not post comment');
-      }
+    if (!userToken || !tweetData) {
+      Alert.alert('Error', 'You must be logged in and have a tweet loaded to comment.');
+      return;
     }
-  } catch (error) {
-    console.error('Error posting comment:', error);
-    if (Platform.OS === 'web') {
-      alert('Error: could not post comment');
-    } else {
-      Alert.alert('Error', 'Could not post comment');
+
+    try {
+      const response = await fetch(`${domaindynamo}/comment_tweet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({username: username,tweet_link: tweetData.Tweet_Link, content: comment, parent_comment_id: null }),
+      });
+
+      const responseData = await response.json();
+
+      if (response.ok && responseData.status === 'Success') {
+        if (Platform.OS === 'web') {
+          alert('Success: Comment has been posted');
+          router.push('/tweetpage');
+        } else {
+          Alert.alert('Success', 'Comment has been posted');
+        }
+        // Refresh comments
+        setComment('');
+        fetchComments();
+      } else {
+        Platform.OS === 'web'
+          ? alert('Error: could not post comment')
+          : Alert.alert('Error', 'Could not post comment');
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      Platform.OS === 'web'
+        ? alert('Error: could not post comment')
+        : Alert.alert('Error', 'Could not post comment');
     }
-  }
-};
+  };
 
   const renderCommentCard = ({ item }) => {
     const formatDate = (isoDate) => {
       const date = new Date(isoDate);
-      return date.toLocaleString(); // Adjust format as needed
+      return date.toLocaleString();
     };
 
     return (
@@ -247,7 +217,6 @@ const TweetPage: React.FC = () => {
       </View>
     );
   };
-
 
   return (
     <ScrollView style={styles.container}>
@@ -271,9 +240,7 @@ const TweetPage: React.FC = () => {
             </View>
             <Text style={styles.tweetText}>{tweetData.Tweet}</Text>
             {tweetData.Media_URL && (
-              <TouchableOpacity
-                onPress={() => handleMediaPress(tweetData.Tweet_Link)}
-              >
+              <TouchableOpacity onPress={() => handleMediaPress(tweetData.Tweet_Link)}>
                 <Image
                   source={{ uri: tweetData.Media_URL }}
                   style={styles.media}
@@ -282,12 +249,8 @@ const TweetPage: React.FC = () => {
               </TouchableOpacity>
             )}
             <View style={styles.stats}>
-              <Text style={styles.stat}>
-                Retweets: {tweetData.Retweets || 0}
-              </Text>
-              <Text style={styles.stat}>
-                Likes: {tweetData.Favorites || 0}
-              </Text>
+              <Text style={styles.stat}>Retweets: {tweetData.Retweets || 0}</Text>
+              <Text style={styles.stat}>Likes: {tweetData.Favorites || 0}</Text>
             </View>
           </View>
 
@@ -298,38 +261,36 @@ const TweetPage: React.FC = () => {
             <TouchableOpacity onPress={() => handleSave(tweetData.Tweet_Link)}>
               <Icon name="bookmark-outline" size={30} color="#A1A0FE" />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleShare(tweetData.Tweet_Link)}
-            >
+            <TouchableOpacity onPress={() => handleShare(tweetData.Tweet_Link)}>
               <Icon name="share-outline" size={30} color="#A1A0FE" />
             </TouchableOpacity>
           </View>
           <View style={styles.commentContainer}>
-          <TextInput
-            style={styles.commentInput}
-            placeholder="Type your comment..."
-            placeholderTextColor="#FFFF00"
-            value={comment}
-            onChangeText={(text) => setComment(text)} // Ensure the input field updates
-          />
-          <TouchableOpacity
-            style={styles.postCommentButton}
-            onPress={() => postComment(comment)}
-          >
-            <Text style={styles.postButtonText}>Post Comment</Text>
-          </TouchableOpacity>
-          <FlatList
-            data={allComments}
-            renderItem={renderCommentCard}
-            keyExtractor={(item) => item.comment_id}
-            contentContainerStyle={styles.commentCard}
-            ListEmptyComponent={
-              <Text style={styles.noComments}>
-                No comments yet. Be the first to comment!
-              </Text>
-            }
-        />
-        </View>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Type your comment..."
+              placeholderTextColor="#FFFF00"
+              value={comment}
+              onChangeText={(text) => setComment(text)}
+            />
+            <TouchableOpacity
+              style={styles.postCommentButton}
+              onPress={() => postComment(comment)}
+            >
+              <Text style={styles.postButtonText}>Post Comment</Text>
+            </TouchableOpacity>
+            <FlatList
+              data={allComments}
+              renderItem={renderCommentCard}
+              keyExtractor={(item) => item.comment_id.toString()}
+              contentContainerStyle={styles.commentCard}
+              ListEmptyComponent={
+                <Text style={styles.noComments}>
+                  No comments yet. Be the first to comment!
+                </Text>
+              }
+            />
+          </View>
         </>
       ) : (
         <Text style={styles.loadingText}>Loading tweet details...</Text>
@@ -354,7 +315,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tweetCard: {
-    backgroundColor: '#000000', // Black background for the tweet
+    backgroundColor: '#000000',
     borderRadius: 10,
     padding: 15,
     marginBottom: 20,
@@ -378,15 +339,15 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF', // Set username color to white
+    color: '#FFFFFF',
   },
   timestamp: {
     fontSize: 12,
-    color: '#CCCCCC', // Use a lighter gray for better contrast
+    color: '#CCCCCC',
   },
   tweetText: {
     fontSize: 16,
-    color: '#FFFFFF', // Set tweet text color to white
+    color: '#FFFFFF',
     marginBottom: 10,
   },
   media: {
@@ -451,7 +412,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#000',
     textAlign: 'left',
-    marginTop:5,
+    marginTop: 5,
     paddingLeft: 25,
   },
   commentInput: {

@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView, Alert, Image , Platform} from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
 type IndustryType = string;
+
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 export default function PreferencesScreen() {
   const [selectedOptions, setSelectedOptions] = useState<IndustryType[]>([]);
   const [username, setUsername] = useState<string>('Guest');
   const router = useRouter();
+  const { userToken } = useContext(UserContext);
 
   const industriesByCategory: Record<string, string[]> = {
     "News": ['BREAKING NEWS', 'WORLDPOST', 'WORLD NEWS', 'POLITICS', 'U.S. NEWS'],
@@ -19,17 +23,22 @@ export default function PreferencesScreen() {
     "Other": ['MONEY', 'SCIENCE', 'PARENTING', 'CRIME', 'DIVORCE', 'WOMEN'],
   };
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
-
-
-  // Fetch user data and preferences on mount
   useEffect(() => {
     const fetchUsername = async () => {
+      if (!userToken) {
+        setUsername('Guest');
+        return;
+      }
+
       try {
-        const response = await fetch(`${domaindynamo}/get-username`);
+        const response = await fetch(`${domaindynamo}/get-username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: userToken })
+        });
+
         const data = await response.json();
-        if (data.username) {
+        if (data.status === 'Success' && data.username) {
           setUsername(data.username);
         } else {
           setUsername('Guest');
@@ -40,20 +49,24 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
       }
     };
 
-    const fetchPreferences = async () => {
-      try {
-        if (username === 'Guest') return;
+    fetchUsername();
+  }, [userToken]);
 
+  useEffect(() => {
+    const fetchPreferences = async (username: string) => {
+      if (!userToken || username === 'Guest') return;
+
+      try {
         const response = await fetch(`${domaindynamo}/check-preferences`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
+          body: JSON.stringify({ username: username })
         });
 
         const data = await response.json();
 
         if (data.status === 'Success' && Array.isArray(data.data)) {
-          const preferences = data.data.map((item) => item.preference);
+          const preferences = data.data.map((item: any) => item.preference);
           setSelectedOptions(preferences.length ? preferences : []);
         } else {
           setSelectedOptions([]);
@@ -64,15 +77,10 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
       }
     };
 
-    const initializePreferences = async () => {
-      await fetchUsername();
-      if (username !== 'Guest') {
-        await fetchPreferences();
-      }
-    };
-
-    initializePreferences();
-  }, [username]);
+    if (username !== 'Guest') {
+      fetchPreferences(username);
+    }
+  }, [username, userToken]);
 
   const toggleOption = (option: IndustryType) => {
     setSelectedOptions((prevSelected) =>
@@ -82,12 +90,14 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
     );
   };
 
-  const handleResetPreferences = async () => {
+  const handleResetPreferences = async (username) => {
+    if (!userToken || username === 'Guest') return;
+
     try {
       const response = await fetch(`${domaindynamo}/delete-preferences`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
+        body: JSON.stringify({ username: username })
       });
 
       if (response.ok) {
@@ -100,7 +110,12 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
     }
   };
 
-  const handleViewClick = async () => {
+  const handleViewClick = async (username: string) => {
+    if (!userToken || username === 'Guest') {
+      Alert.alert('Error', 'You must be logged in to save preferences.');
+      return;
+    }
+
     if (selectedOptions.length === 0) {
       Alert.alert('No Preferences', 'Please select at least one preference.');
       return;
@@ -110,10 +125,8 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
       const addPreferencePromises = selectedOptions.map(async (preference) => {
         const response = await fetch(`${domaindynamo}/add-preference`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ username, preference }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: username, preference })
         });
 
         const data = await response.json();
@@ -147,38 +160,39 @@ const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functio
     );
   };
 
-  return (
-    <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-      <View style={styles.container}>
-        <View style={styles.logoContainer}>
+ return (
+  <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
+    <View style={styles.container}>
+      <TouchableOpacity style={styles.resetButton} onPress={() => handleResetPreferences(username)}>
+        <Text style={styles.resetButtonText}>Reset</Text>
+      </TouchableOpacity>
+      <Text style={styles.heading}>Hi {username},</Text>
+      <Text style={styles.subHeading}>What are your preferences from X and other News Sources?</Text>
+
+      {Object.entries(industriesByCategory).map(([category, options]) => (
+        <View style={styles.section} key={category}>
+          <Text style={styles.sectionHeading}>{category}</Text>
+          <FlatList
+            data={options}
+            keyExtractor={(item, index) => index.toString()}
+            renderItem={renderOption}
+            numColumns={3}
+            columnWrapperStyle={styles.rowStyle}
+            scrollEnabled={false}
+          />
         </View>
-        <TouchableOpacity style={styles.resetButton} onPress={handleResetPreferences}>
-          <Text style={styles.resetButtonText}>Reset</Text>
-        </TouchableOpacity>
-        <Text style={styles.heading}>Hi {username},</Text>
-        <Text style={styles.subHeading}>What are your preferences from X and other News Sources?</Text>
+      ))}
 
-        {Object.entries(industriesByCategory).map(([category, options]) => (
-          <View style={styles.section} key={category}>
-            <Text style={styles.sectionHeading}>{category}</Text>
-            <FlatList
-              data={options}
-              keyExtractor={(item, index) => index.toString()}
-              renderItem={renderOption}
-              numColumns={3}
-              columnWrapperStyle={styles.rowStyle}
-              scrollEnabled={false}
-            />
-          </View>
-        ))}
+      <TouchableOpacity
+        style={[styles.optionButton, styles.viewButton]}
+        onPress={() => handleViewClick(username)}
+      >
+        <Text style={[styles.optionText, styles.viewButtonText]}>VIEW</Text>
+      </TouchableOpacity>
+    </View>
+  </ScrollView>
+);};
 
-        <TouchableOpacity style={[styles.optionButton, styles.viewButton]} onPress={handleViewClick}>
-          <Text style={[styles.optionText, styles.viewButtonText]}>VIEW</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  );
-}
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
@@ -188,15 +202,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F7F9FC',
     padding: 20,
-  },
-  logoContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  logo: {
-    width: 150,
-    height: 80,
   },
   resetButton: {
     position: 'absolute',
@@ -218,6 +223,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
     marginBottom: 10,
+    marginTop: 60,
   },
   subHeading: {
     fontSize: 14,

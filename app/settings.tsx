@@ -1,23 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Switch, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const SettingsScreen: React.FC = () => {
   const router = useRouter();
+  const { userToken } = useContext(UserContext); // Access token from context
+
   const [isPushNotificationsEnabled, setIsPushNotificationsEnabled] = useState(false);
   const [isDarkThemeEnabled, setIsDarkThemeEnabled] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUsername = async () => {
+      if (!userToken) {
+        setUsername('Guest');
+        return;
+      }
       try {
-        const response = await fetch(`${domaindynamo}/get-username`);
+        const response = await fetch(`${domaindynamo}/get-username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: userToken })
+        });
         const data = await response.json();
-        if (data.username) {
+        if (data.status === 'Success' && data.username) {
           setUsername(data.username);
         } else {
           Alert.alert('Error', 'Failed to fetch username');
@@ -28,8 +38,12 @@ const SettingsScreen: React.FC = () => {
       }
     };
 
-    fetchUsername();
-  }, []);
+    if (userToken) {
+      fetchUsername();
+    } else {
+      setUsername('Guest');
+    }
+  }, [userToken]);
 
   const togglePushNotifications = () => {
     setIsPushNotificationsEnabled((prev) => !prev);
@@ -40,56 +54,69 @@ const SettingsScreen: React.FC = () => {
   };
 
   const logout = () => {
+    // On logout, navigate to home or perform any logout logic
     router.push('/home');
   };
 
-const handleDeactivation = async (nickname: string) => {
-  try {
-    const deactivateresponse = await fetch(`${domaindynamo}/deactivate-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: nickname }),
-    });
-
-    if (deactivateresponse.ok) {
-      console.log(`Deactivating account for: ${nickname}`);
-      router.push('/home');
-    } else {
-      const errorData = await deactivateresponse.json();
-      console.error('Deactivation failed:', errorData.message);
+  const handleDeactivation = async () => {
+    if (!userToken || !username) {
+      Alert.alert('Error', 'You must be logged in to deactivate your account.');
+      return;
     }
-  } catch (error) {
-    console.error('Error deactivating account:', error);
-  }
-};
+    try {
+      const deactivateresponse = await fetch(`${domaindynamo}/deactivate-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Assuming backend now accepts token
+        body: JSON.stringify({ token: userToken })
+      });
 
-const handleDeletion = async (nickname: string) => {
-  try {
-    const deleteResponse = await fetch(`${domaindynamo}/delete-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: nickname }),
-    });
-
-    if (deleteResponse.ok) {
-      console.log(`Deleting account for: ${nickname}`);
-      router.push('/home');
-    } else {
-      const errorData = await deleteResponse.json();
-      console.error('Deletion failed:', errorData.message);
+      if (deactivateresponse.ok) {
+        console.log(`Deactivating account for: ${username}`);
+        router.push('/home');
+      } else {
+        const errorData = await deactivateresponse.json();
+        console.error('Deactivation failed:', errorData.message);
+      }
+    } catch (error) {
+      console.error('Error deactivating account:', error);
     }
-  } catch (error) {
-    console.error('Error deleting account:', error);
-  }
-};
+  };
+
+  const handleDeletion = async () => {
+    if (!userToken || !username) {
+      Alert.alert('Error', 'You must be logged in to delete your account.');
+      return;
+    }
+
+    try {
+      const deleteResponse = await fetch(`${domaindynamo}/delete-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Assuming backend now accepts token
+        body: JSON.stringify({ token: userToken })
+      });
+
+      if (deleteResponse.ok) {
+        console.log(`Deleting account for: ${username}`);
+        router.push('/home');
+      } else {
+        const errorData = await deleteResponse.json();
+        console.error('Deletion failed:', errorData.message);
+      }
+    } catch (error) {
+      console.error('Error deleting account:', error);
+    }
+  };
 
   const confirmDeactivation = () => {
+    if (!username) return;
     if (Platform.OS === 'web') {
       const userConfirmed = window.confirm(
         'Account Deactivation\n\nAre you sure you want to deactivate your account?'
       );
       if (userConfirmed) {
-        handleDeactivation(username!);
+        handleDeactivation();
       }
     } else {
       Alert.alert(
@@ -97,7 +124,7 @@ const handleDeletion = async (nickname: string) => {
         'Are you sure you want to deactivate your account?',
         [
           { text: 'Cancel', onPress: () => console.log('Deactivation canceled') },
-          { text: 'Deactivate', onPress: () => handleDeactivation(username!) },
+          { text: 'Deactivate', onPress: () => handleDeactivation() },
         ],
         { cancelable: false }
       );
@@ -105,21 +132,21 @@ const handleDeletion = async (nickname: string) => {
   };
 
   const confirmDeletion = () => {
+    if (!username) return;
     if (Platform.OS === 'web') {
       const userConfirmed = window.confirm(
         'Account Deletion\n\nAre you sure you want to permanently delete your account? This action cannot be undone.'
       );
       if (userConfirmed) {
-        handleDeletion(username!);
+        handleDeletion();
       }
-
     } else {
       Alert.alert(
         'Account Deletion',
         'Are you sure you want to permanently delete your account? This action cannot be undone.',
         [
           { text: 'Cancel', onPress: () => console.log('Deletion canceled') },
-          { text: 'Delete', onPress: () => handleDeletion(username!) },
+          { text: 'Delete', onPress: () => handleDeletion() },
         ],
         { cancelable: false }
       );

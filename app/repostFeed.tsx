@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -7,42 +7,55 @@ import {
   Linking,
   ActivityIndicator,
   FlatList,
-  Platform,
 } from 'react-native';
+import { UserContext } from '../app/UserContext'; // Adjust the path if needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const RepostFeedPage = () => {
   const [sharedContent, setSharedContent] = useState([]);
   const [loading, setLoading] = useState(true);
   const [username, setUsername] = useState('');
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const { userToken } = useContext(UserContext); // Access token from context
 
   useEffect(() => {
     const fetchInitialData = async () => {
+      if (!userToken) {
+        setUsername('Guest');
+        await fetchSharedContent(); // If userToken not present, we consider guest logic if backend allows
+        return;
+      }
       try {
-        const usernameResponse = await fetch(`${domaindynamo}/get-username`);
+        // Fetch username from token
+        const usernameResponse = await fetch(`${domaindynamo}/get-username`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: userToken })
+        });
         const usernameData = await usernameResponse.json();
-        const currentUsername = usernameData.username || 'Guest';
+        const currentUsername = (usernameData.status === 'Success' && usernameData.username) ? usernameData.username : 'Guest';
         setUsername(currentUsername);
+
         await fetchSharedContent(currentUsername);
       } catch (err) {
         console.error('Error fetching username:', err);
         setUsername('Guest');
-        await fetchSharedContent('Guest');
+        await fetchSharedContent();
       }
     };
 
     fetchInitialData();
-  }, []);
+  }, [userToken]);
 
-  const fetchSharedContent = async (followerUsername) => {
+  const fetchSharedContent = async (username: string) => {
     try {
+      // Send token to get_shared_content.
       const response = await fetch(`${domaindynamo}/get_shared_content`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ follower_username: followerUsername }),
+        body: JSON.stringify({ follower_username: username })
       });
 
       if (!response.ok) throw new Error(`Error:failed to fetch ${response.statusText}`);
@@ -51,7 +64,7 @@ const RepostFeedPage = () => {
       if (!data.shared_content) throw new Error('Shared content not found');
 
       const detailedContent = await Promise.all(
-        data.shared_content.map(async (item) => {
+        data.shared_content.map(async (item: any) => {
           if (item.content_type === 'article') {
             return { ...item, content_data: await fetchArticleContent(item.content_id) };
           } else if (item.content_type === 'tweet') {
@@ -62,7 +75,7 @@ const RepostFeedPage = () => {
       );
 
       setSharedContent(detailedContent);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching shared content:', err);
       setError(err.message || 'Error fetching shared content');
     } finally {
@@ -70,7 +83,7 @@ const RepostFeedPage = () => {
     }
   };
 
-  const fetchArticleContent = async (id) => {
+  const fetchArticleContent = async (id: number) => {
     try {
       const response = await fetch(`${domaindynamo}/get-article-by-id`, {
         method: 'POST',
@@ -85,13 +98,13 @@ const RepostFeedPage = () => {
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch article content');
 
       return data.data; // The article data
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error in fetchArticleContent: ${error.message}`);
       return null; // Return null to handle gracefully
     }
   };
 
-  const fetchTweetContent = async (link) => {
+  const fetchTweetContent = async (link: string) => {
     try {
       const response = await fetch(`${domaindynamo}/get-tweet-by-link`, {
         method: 'POST',
@@ -106,7 +119,7 @@ const RepostFeedPage = () => {
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch tweet content');
 
       return data.data; // The tweet data
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error in fetchTweetContent: ${error.message}`);
       return null; // Return null to handle gracefully
     }
@@ -128,7 +141,7 @@ const RepostFeedPage = () => {
     );
   }
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }: { item: any }) => (
     <View key={item.content_id} style={styles.card}>
       <Text style={styles.subTitle}>
         Shared by {item.username} on {new Date(item.shared_at).toLocaleString()}
@@ -166,7 +179,7 @@ const RepostFeedPage = () => {
     <FlatList
       contentContainerStyle={styles.container}
       data={sharedContent}
-      keyExtractor={(item) => item.content_id.toString()}
+      keyExtractor={(item: any) => item.content_id.toString()}
       renderItem={renderItem}
       ListEmptyComponent={<Text style={styles.noContent}>No shared content found.</Text>}
     />
@@ -183,22 +196,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 16,
+  errorText: {
+    color: 'red',
+    fontSize: 18,
   },
   subTitle: {
     fontSize: 16,
     marginBottom: 8,
   },
   card: {
-        backgroundColor: '#8A7FDC',
-        borderRadius: 10,
-        marginBottom: 5,
-        padding: 10,
-        alignSelf: 'center',
-        width: '95%',
+    backgroundColor: '#8A7FDC',
+    borderRadius: 10,
+    marginBottom: 5,
+    padding: 10,
+    alignSelf: 'center',
+    width: '95%',
   },
   headline: {
     fontSize: 18,
@@ -212,90 +224,11 @@ const styles = StyleSheet.create({
   bold: {
     fontWeight: 'bold',
   },
-  errorText: {
-    color: 'red',
-    fontSize: 18,
-  },
   noContent: {
     textAlign: 'center',
     fontSize: 16,
     color: '#666',
   },
-
-  backIcon: {
-    marginBottom: 20,
-  },
-  header: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  tweetCard: {
-    backgroundColor: '#000000',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  tweetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginRight: 10,
-  },
-  username: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  timestamp: {
-    fontSize: 12,
-    color: '#CCCCCC',
-  },
-  tweetText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 10,
-  },
-  media: {
-    width: '100%',
-    height: 200,
-    marginBottom: 10,
-  },
-  stats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  stat: {
-    color: '#CCCCCC',
-    fontSize: 12,
-  },
-  aiExplanationHeader: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  aiExplanationText: {
-    fontSize: 14,
-    color: '#333333',
-    marginBottom: 20,
-  },
-  actionIcons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#A1A0FE',},
 });
 
 export default RepostFeedPage;

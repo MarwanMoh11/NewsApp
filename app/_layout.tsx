@@ -1,17 +1,21 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import { Slot } from 'expo-router';
-import { useRouter } from 'expo-router';
+import { Slot, useRouter } from 'expo-router';
+import { UserProvider } from '../app/UserContext'; // Adjust the path to where your UserContext file is located
 
 const Layout: React.FC = () => {
     const router = useRouter();
+
     useEffect(() => {
         router.push('/home');
     }, [router]);
+
     return (
-        <View style={{ flex: 1 }}>
-            <Slot />
-        </View>
+        <UserProvider>
+            <View style={{ flex: 1 }}>
+                <Slot />
+            </View>
+        </UserProvider>
     );
 };
 
