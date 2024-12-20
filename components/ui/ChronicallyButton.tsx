@@ -1,6 +1,15 @@
-import React, { useState, useRef } from 'react';
-import { View, TouchableOpacity, StyleSheet, Image, Animated, ScrollView } from 'react-native'; // Import Animated and ScrollView
-import { FontAwesome } from '@expo/vector-icons'; // Import FontAwesome icons
+// components/CustomButtonWithBar.tsx
+
+import React, { useEffect, useRef } from 'react';
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Animated,
+  Dimensions,
+} from 'react-native';
+import { FontAwesome } from '@expo/vector-icons';
 
 interface BarButton {
   iconName: keyof typeof FontAwesome.glyphMap; // Ensures only valid FontAwesome icons
@@ -10,6 +19,7 @@ interface BarButton {
 interface CustomButtonWithBarProps {
   onMainButtonPress?: () => void;
   barButtons: BarButton[];
+  isVisible: boolean; // Control visibility from parent
   buttonSize?: number;
   barHeight?: number;
   barBackgroundColor?: string;
@@ -18,77 +28,72 @@ interface CustomButtonWithBarProps {
 const CustomButtonWithBar: React.FC<CustomButtonWithBarProps> = ({
   onMainButtonPress,
   barButtons,
+  isVisible,
   buttonSize = 80,
   barHeight = 60,
   barBackgroundColor = '#F7B8D2',
 }) => {
-  const [isBarVisible, setIsBarVisible] = useState(false);
-  const [lastOffset, setLastOffset] = useState(0);
-  const [isButtonVisible, setIsButtonVisible] = useState(true);
-  const buttonYPosition = useRef(new Animated.Value(0)).current;
+  // Animated values for opacity and position
+  const buttonOpacity = useRef(new Animated.Value(1)).current;
+  const barTranslateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isVisible) {
+      // Show the button and bar with animation
+      Animated.parallel([
+        Animated.timing(buttonOpacity, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(barTranslateY, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Hide the button and bar with animation
+      Animated.parallel([
+        Animated.timing(buttonOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(barTranslateY, {
+          toValue: 100, // Moves the bar out of view
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [isVisible, buttonOpacity, barTranslateY]);
 
   const handleMainButtonPress = () => {
-    setIsBarVisible(!isBarVisible);
     if (onMainButtonPress) {
       onMainButtonPress();
     }
-  };
-
-  const handleScroll = (event: any) => {
-    const currentOffset = event.nativeEvent.contentOffset.y;
-
-    if (currentOffset > lastOffset && isButtonVisible) {
-      Animated.timing(buttonYPosition, {
-        toValue: buttonSize + 20,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-      setIsButtonVisible(false);
-    } else if (currentOffset < lastOffset && !isButtonVisible) {
-      Animated.timing(buttonYPosition, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-      setIsButtonVisible(true);
-    }
-
-    setLastOffset(currentOffset);
+    // Optionally, toggle the bar visibility here if needed
   };
 
   return (
     <View style={styles.container}>
-      <ScrollView onScroll={handleScroll} scrollEventThrottle={16}>
-      </ScrollView>
-
-      {isBarVisible && (
-        <View style={[styles.barContainer, { height: barHeight, backgroundColor: barBackgroundColor }]}>
-          {barButtons.slice(0, 2).map((button, index) => (
-            <TouchableOpacity key={index} onPress={button.onPress} style={styles.barButton}>
-              <FontAwesome name={button.iconName} size={30} color="#FFFFFF" />
-            </TouchableOpacity>
-          ))}
-          <View style={{ width: buttonSize }} />
-          {barButtons.slice(2).map((button, index) => (
-            <TouchableOpacity key={index} onPress={button.onPress} style={styles.barButton}>
-              <FontAwesome name={button.iconName} size={30} color="#FFFFFF" />
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-
+      {/* Bar with additional buttons */}
       <Animated.View
         style={[
-          styles.mainButton,
-          { width: buttonSize, height: buttonSize, borderRadius: buttonSize / 2, transform: [{ translateY: buttonYPosition }] },
+          styles.barContainer,
+          {
+            height: barHeight,
+            backgroundColor: barBackgroundColor,
+            transform: [{ translateY: barTranslateY }],
+          },
         ]}
       >
-        <TouchableOpacity onPress={handleMainButtonPress} style={styles.mainButtonInner}>
-          <Image
-            source={require('../../assets/images/buttonLogo.png')}
-            style={{ width: buttonSize / 2+15, height: buttonSize / 2 }}
-          />
-        </TouchableOpacity>
+        {barButtons.map((button, index) => (
+          <TouchableOpacity key={index} onPress={button.onPress} style={styles.barButton}>
+            <FontAwesome name={button.iconName} size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        ))}
       </Animated.View>
     </View>
   );
@@ -97,30 +102,37 @@ const CustomButtonWithBar: React.FC<CustomButtonWithBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 30,
     width: '100%',
     alignItems: 'center',
+    zIndex: 10, // Ensure the button is above other components
   },
   barContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     width: '90%',
     paddingHorizontal: 20,
-    position: 'absolute',
-    bottom: 10,
     borderRadius: 30,
-    overflow: 'hidden',
+    marginBottom: 10,
+    elevation: 5, // For Android shadow
+    shadowColor: '#000', // For iOS shadow
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
   },
   barButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 10,
+    padding: 10,
   },
   mainButton: {
     backgroundColor: '#8A7FDC',
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 5, // For Android shadow
+    shadowColor: '#000', // For iOS shadow
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 4 },
   },
   mainButtonInner: {
     justifyContent: 'center',
@@ -128,4 +140,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CustomButtonWithBar;
+export default React.memo(CustomButtonWithBar);

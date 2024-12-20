@@ -1,16 +1,30 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, Image, Platform } from 'react-native';
+// pages/TrendingScreen.tsx
+
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  Alert,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import CustomButton from '../components/ui/ChronicallyButton';
+import { UserContext } from '../app/UserContext';
+import TweetCard from '../components/TweetCard'; // Import the updated TweetCard
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index'
-
+const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const TrendingScreen: React.FC = () => {
   const [content, setContent] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const lastOffset = useRef(0);
+  const [showButton, setShowButton] = useState(true); // Controls button visibility
   const [errorMessage, setErrorMessage] = useState('');
   const router = useRouter();
+  const { userToken, setUserToken } = useContext(UserContext); // Access the token
 
   const fetchTrendingContent = async () => {
     setLoading(true);
@@ -36,7 +50,7 @@ const TrendingScreen: React.FC = () => {
     fetchTrendingContent();
   }, []);
 
-  const formatToUTCT = (isoDate: string) => {
+  const formatToUTCT = (isoDate: string): string => {
     const date = new Date(isoDate);
     const hours = String(date.getUTCHours()).padStart(2, '0');
     const minutes = String(date.getUTCMinutes()).padStart(2, '0');
@@ -50,14 +64,15 @@ const TrendingScreen: React.FC = () => {
   const handleContentPress = async (item: any) => {
     if (item.Tweet_Link) {
       try {
-        const response = await fetch(`${domaindynamo}/set-tweet-link`, {
+        const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ link: item.Tweet_Link }),
+          body: JSON.stringify({ token: userToken, tweet: item }),
         });
 
         const data = await response.json();
         if (data.status === 'Success') {
+          setUserToken(data.token);
           router.push('/tweetpage');
         } else {
           Alert.alert('Error', 'Failed to set tweet link');
@@ -72,52 +87,49 @@ const TrendingScreen: React.FC = () => {
   };
 
   const renderContentCard = ({ item }: { item: any }) => (
-    <TouchableOpacity
-      onPress={() => {
-        if (item.Tweet_Link) handleContentPress(item);
-      }}
-      style={styles.tweetCard}
-    >
-        <Image source={{ uri: item.Media_URL }} style={styles.tweetImage} />
-        <Text style={styles.tweetUsername}>{item.Username}</Text>
-        <Text style={styles.tweetDate}>{formatToUTCT(item.Created_At)}</Text>
-        <Text style={styles.tweetText} numberOfLines={3} ellipsizeMode="tail">
-          {item.Tweet}
-        </Text>
-    </TouchableOpacity>
+    <TweetCard item={item} onPress={handleContentPress} />
   );
 
-  const [isButtonVisible, setIsButtonVisible] = useState(true);
-
+  // Handle scroll to show/hide the button
   const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    setIsButtonVisible(offsetY < 100);
+    const currentOffset = event.nativeEvent.contentOffset.y;
+    if (currentOffset > lastOffset.current && currentOffset > 50) {
+      // Scrolling Down
+      if (showButton) setShowButton(false);
+    } else if (currentOffset < lastOffset.current) {
+      // Scrolling Up
+      if (!showButton) setShowButton(true);
+    }
+    lastOffset.current = currentOffset;
   };
 
   const handleHomePress = () => {
-    console.log(router.push('/mynews'));
+    router.push('/mynews');
   };
 
   const handleBookmarkPress = () => {
-    router.push('/savedArticles');
+    router.push('/savedarticles');
   };
 
   const handleAddressBookPress = () => {
-      router.push('/followingPage');
+    router.push('/followingpage');
   };
 
   const handleSearchPress = () => {
+    router.push('/searchpage');
     console.log('Search button pressed!');
   };
 
   return (
     <View style={styles.container}>
-
-
       {loading ? (
-        <Text style={styles.loadingText}>Loading...</Text>
+          <View style={styles.activityIndicatorContainer}>
+            <ActivityIndicator size="large" color="#6C63FF" />
+          </View>
       ) : errorMessage ? (
-        <Text style={styles.errorMessage}>{errorMessage}</Text>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorMessage}>{errorMessage}</Text>
+        </View>
       ) : (
         <FlatList
           data={content}
@@ -126,19 +138,28 @@ const TrendingScreen: React.FC = () => {
           contentContainerStyle={styles.listContainer}
           onScroll={handleScroll}
           scrollEventThrottle={16}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No trending content available.</Text>
+            </View>
+          }
         />
       )}
 
-      {isButtonVisible && (
-        <CustomButton
-          barButtons={[
-            { iconName: 'home', onPress: handleHomePress },
-            { iconName: 'bookmark', onPress: handleBookmarkPress },
-            { iconName: 'address-book', onPress: handleAddressBookPress },
-            { iconName: 'search', onPress: handleSearchPress },
-          ]}
-        />
-      )}
+      {/* Custom Floating Button */}
+      <CustomButton
+        isVisible={showButton}
+        barButtons={[
+          { iconName: 'home', onPress: handleHomePress },
+          { iconName: 'bookmark', onPress: handleBookmarkPress },
+          { iconName: 'address-book', onPress: handleAddressBookPress },
+          { iconName: 'search', onPress: handleSearchPress },
+        ]}
+        onMainButtonPress={() => {
+          // Optional: handle main button press if needed
+          console.log('Main button pressed!');
+        }}
+      />
     </View>
   );
 };
@@ -146,69 +167,37 @@ const TrendingScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F4F7FA',
+  },
+  contentContainer: {
     paddingHorizontal: 15,
+    paddingBottom: 100,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  loaderContainer: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    alignItems: 'center',
   },
-  settingsIcon: {
-    position: 'absolute',
-    right: 20,
+  errorContainer: {
+    padding: 20,
+    alignItems: 'center',
   },
-  loadingText: {
-    textAlign: 'center',
-    marginTop: 20,
+  errorText: {
+    color: '#FF0000',
     fontSize: 16,
-    color: '#888',
   },
-  errorMessage: {
-    textAlign: 'center',
-    marginTop: 20,
+  emptyContainer: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#555555',
     fontSize: 16,
-    color: 'red',
   },
-  listContainer: {
-    paddingTop: 20,
-  },
-  tweetCard: {
-    backgroundColor: '#2A2B2E',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    overflow: 'hidden',
-    width: '98%',
-    alignSelf: 'center',
-  },
-  tweetUsername: {
-    color: '#8A7FDC',
-    fontSize: 18,
-    marginBottom: 4,
-    fontWeight: 'bold',
-  },
-  tweetText: {
-    fontSize: 14,
-    color: '#A9A9A9',
-    lineHeight: 20,
-  },
-  tweetDate: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  tweetImage: {
-    height: 200,
-    width: 'auto',
-    resizeMode: 'contain',
+  activityIndicatorContainer: {
+    flex: 1,
+    justifyContent: 'center', // Adjust vertical position
+    alignItems: 'center', // Adjust horizontal position
   },
 });
 

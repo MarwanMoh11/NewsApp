@@ -1,21 +1,31 @@
+// pages/FollowingPage.tsx
+
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, FlatList, Alert, Image, TextInput, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  Alert,
+  TextInput,
+  Platform
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
-import CustomButton from '../components/ui/ChronicallyButton';
-import RepostFeedPage from '../app/repostFeed';
-import { UserContext } from '../app/UserContext'; // Adjust as needed
+import RepostFeedPage from '../app/repostfeed';
+import { UserContext } from '../app/UserContext';
+import BackButton from '../components/ui/BackButton';
 
 const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
 const FollowingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Add Friends');
-  const [followedUsers, setFollowedUsers] = useState<any[]>([]);
+  const [followedUsers, setFollowedUsers] = useState<string[]>([]);
   const [searchUsername, setSearchUsername] = useState('');
+  const [username, setUsername] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [isButtonPressed, setIsButtonPressed] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchResults, setSearchResults] = useState<string[]>([]);
   const router = useRouter();
 
   const { userToken } = useContext(UserContext); // Access the token
@@ -25,12 +35,6 @@ const FollowingPage: React.FC = () => {
       fetchUsername();
     }
   }, [userToken]);
-
-  useEffect(() => {
-    if (activeTab === 'Reposts') {
-
-    }
-  }, [activeTab]);
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
@@ -45,7 +49,7 @@ const FollowingPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/remove_follow_Users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, followed_username: followedUser }),
+        body: JSON.stringify({ follower_username: username, followed_username: followedUser }),
       });
 
       const result = await response.json();
@@ -54,7 +58,6 @@ const FollowingPage: React.FC = () => {
         setFollowedUsers((prevUsers) =>
           prevUsers.filter((user) => user !== followedUser)
         );
-        router.push('/followingPage');
         Alert.alert('Success', `You have unfollowed ${followedUser}.`);
       } else {
         Alert.alert('Error', result.message || 'Failed to unfollow the user.');
@@ -74,7 +77,7 @@ const FollowingPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/follow_Users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, followed_username: followedUser }),
+        body: JSON.stringify({ follower_username: username, followed_username: followedUser }),
       });
 
       const result = await response.json();
@@ -82,7 +85,7 @@ const FollowingPage: React.FC = () => {
       if (response.ok) {
         Alert.alert('Success', `You have followed ${followedUser}.`);
         // Optionally refresh the followed list after following
-        fetchFollowedUsers();
+        fetchFollowedUsers(username);
       } else {
         Alert.alert('Error', result.message || 'Failed to follow the user.');
       }
@@ -93,7 +96,7 @@ const FollowingPage: React.FC = () => {
   };
 
   const searchUser = async (query: string) => {
-    if (query.length === 0) {
+    if (query.trim().length === 0) {
       setSearchResults([]);
       return;
     }
@@ -125,11 +128,12 @@ const FollowingPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/get-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ token: userToken }),
       });
       const data = await response.json();
       if (data.status === 'Success' && data.username) {
         // Once we have the username, we fetch followed users.
+        setUsername(data.username);
         fetchFollowedUsers(data.username);
       } else {
         setFollowedUsers([]);
@@ -150,7 +154,7 @@ const FollowingPage: React.FC = () => {
       });
 
       const result = await followingResponse.json();
-      if (result.status === 'Success' && result.followedUsernames) {
+      if (result.status === 'Success' && Array.isArray(result.followedUsernames)) {
         setFollowedUsers(result.followedUsernames);
       } else {
         setFollowedUsers([]);
@@ -161,7 +165,7 @@ const FollowingPage: React.FC = () => {
     }
   };
 
-const renderFollowedCard = ({ item }: {item: string}) => {
+  const renderFollowedCard = ({ item }: { item: string }) => {
     return (
       <View style={styles.followedCard}>
         <View style={styles.cardContent}>
@@ -171,6 +175,9 @@ const renderFollowedCard = ({ item }: {item: string}) => {
         <TouchableOpacity
           style={styles.closeButton}
           onPress={() => handleUnfollow(item)}
+          accessible={true}
+          accessibilityRole="button"
+          accessibilityLabel={`Unfollow ${item}`}
         >
           <Ionicons name="close" size={20} style={styles.closeIcon} />
         </TouchableOpacity>
@@ -178,33 +185,20 @@ const renderFollowedCard = ({ item }: {item: string}) => {
     );
   };
 
-
-
-
-  const [isButtonVisible, setIsButtonVisible] = useState(true);
-
-  const handleHomePress = () => {
-    console.log(router.push('/mynews'));
-  };
-
-  const handleBookmarkPress = () => {
-    router.push('/savedArticles');
-  };
-
-  const handleAddressBookPress = () => {
-      router.push('/followingPage');
-  };
-
-  const handleSearchPress = () => {
-    router.push('/searchPage');
-  };
   return (
     <View style={styles.container}>
+      {/* Back Button */}
+      <BackButton />
+
+      {/* Header with Tabs and Settings Icon */}
       <View style={styles.header}>
         <View style={styles.tabsContainer}>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Add Friends' && styles.activeTabButton]}
-            onPress={() => setActiveTab('Add Friends')}
+            onPress={() => handleTabChange('Add Friends')}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel="Add Friends Tab"
           >
             <Text style={[styles.tabText, activeTab === 'Add Friends' && styles.activeTabText]}>
               Add Friends
@@ -212,22 +206,24 @@ const renderFollowedCard = ({ item }: {item: string}) => {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.tabButton, activeTab === 'Reposts' && styles.activeTabButton]}
-            onPress={() => setActiveTab('Reposts')}
+            onPress={() => handleTabChange('Reposts')}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel="Reposts Tab"
           >
             <Text style={[styles.tabText, activeTab === 'Reposts' && styles.activeTabText]}>
               Reposts
             </Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsIcon}>
-          <Icon name="settings-outline" size={24} color="#888" />
-        </TouchableOpacity>
       </View>
 
+      {/* Content Based on Active Tab */}
       {activeTab === 'Reposts' ? (
         <RepostFeedPage />
       ) : (
         <>
+          {/* Search Bar */}
           <View style={styles.searchBarContainer}>
             <TextInput
               style={styles.searchInput}
@@ -238,191 +234,200 @@ const renderFollowedCard = ({ item }: {item: string}) => {
                 setSearchUsername(text);
                 searchUser(text); // Trigger search when text changes
               }}
+              accessible={true}
+              accessibilityLabel="Search for a user"
             />
-            <TouchableOpacity style={styles.followButton} onPress={() => searchUser(searchUsername)}>
-              <Text style={styles.followButtonText}>Search</Text>
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={() => searchUser(searchUsername)}
+              accessible={true}
+              accessibilityRole="button"
+              accessibilityLabel="Search Button"
+            >
+              <Text style={styles.searchButtonText}>Search</Text>
             </TouchableOpacity>
           </View>
 
-          {isButtonPressed && errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          {/* Error Message */}
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
-          {searchUsername.length > 0 && (
+          {/* Search Results */}
+          {searchUsername.trim().length > 0 && (
             <View style={styles.searchResultsContainer}>
               {searchResults.length > 0 ? (
                 <FlatList
                   data={searchResults}
-                  keyExtractor={(item) => item.username}
+                  keyExtractor={(item) => item}
                   renderItem={({ item }) => (
-                    <TouchableOpacity onPress={() => handleFollow(item)}>
+                    <TouchableOpacity onPress={() => handleFollow(item)} style={styles.searchResultItem} accessible={true} accessibilityRole="button" accessibilityLabel={`Follow ${item}`}>
                       <Text style={styles.searchResultText}>{item}</Text>
                     </TouchableOpacity>
                   )}
                 />
               ) : (
-                <Text style={styles.searchResultText}>No results found</Text>
+                <Text style={styles.noResultsText}>No results found</Text>
               )}
             </View>
           )}
 
+          {/* List of Followed Users */}
           <FlatList
             data={followedUsers}
             renderItem={renderFollowedCard}
             keyExtractor={(item) => item}
-            contentContainerStyle={styles.contentContainer}
+            contentContainerStyle={styles.followedListContainer}
             ListEmptyComponent={
-              <Text style={{ textAlign: 'center', color: '#888', marginTop: 20 }}>
-                You are not currently following any users.
-              </Text>
+              <Text style={styles.noContent}>You are not currently following any users.</Text>
             }
+            accessible={true}
+            accessibilityLabel="List of followed users"
           />
         </>
       )}
-
-      <CustomButton
-        barButtons={[
-          { iconName: 'home', onPress: handleHomePress },
-          { iconName: 'bookmark', onPress: handleBookmarkPress },
-          { iconName: 'address-book', onPress: handleAddressBookPress },
-          { iconName: 'search', onPress: handleSearchPress },
-        ]}
-      />
     </View>
   );
-  };
+};
 
+export default FollowingPage;
 
-  export default FollowingPage;
-
-  const styles = StyleSheet.create({
-    logoImage: {
-      width: 300,
-      height: 100,
-      alignSelf: 'center',
-    },
-    container: {
-      flex: 1,
-      backgroundColor: '#FFFFFF',
-    },
-    header: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      marginTop: 40,
-      borderBottomWidth: 1,
-      borderBottomColor: '#E0E0E0',
-      paddingBottom: 10,
-    },
-    tabsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      flex: 1,
-    },
-    tabButton: {
-      marginHorizontal: 20,
-      paddingBottom: 5,
-    },
-    tabText: {
-      fontSize: 18,
-      color: '#888',
-    },
-    activeTabButton: {
-      borderBottomWidth: 2,
-      borderBottomColor: '#A1A0FE',
-    },
-    activeTabText: {
-      color: '#333',
-      fontWeight: 'bold',
-    },
-    settingsIcon: {
-      position: 'absolute',
-      right: 20,
-    },
-    followedCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 10,
-      marginBottom: 10,
-      backgroundColor: '#fff',
-      borderRadius: 8,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 8,
-      position: 'relative',
-    },
-    cardContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flex: 1,
-    },
-    userName: {
-      fontSize: 14,
-      color: '#000000',
-      marginBottom: 5,
-    },
-    userIcon: {
-      marginRight: 10,
-    },
-    closeButton: {
-      position: 'absolute',
-      top: 10,
-      right: 10,
-    },
-    closeIcon: {
-      color: 'red',
-    },
-    contentContainer: {
-      padding: 10,
-      paddingBottom: 80,
-      backgroundColor: '#f9f9f9',
-    },
-    searchBarContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      margin: 10,
-      paddingHorizontal: 20,
-    },
-    searchInput: {
-      flex: 1,
-      height: 40,
-      borderWidth: 1,
-      borderColor: '#CCC',
-      borderRadius: 20,
-      paddingHorizontal: 10,
-      fontSize: 16,
-      backgroundColor: '#F5F5F5',
-      color: '#000',
-    },
-    followButton: {
-      marginLeft: 10,
-      backgroundColor: '#A1A0FE',
-      paddingVertical: 10,
-      paddingHorizontal: 15,
-      borderRadius: 20,
-    },
-    followButtonText: {
-      color: '#FFF',
-      fontSize: 16,
-      fontWeight: 'bold',
-    },
-    errorText: {
-      color: 'red',
-      marginTop: 5,
-      marginLeft: 20,
-      fontSize: 14,
-    },
-    searchResultsContainer: {
-      maxHeight: 200,
-      borderWidth: 1,
-      borderColor: '#CCC',
-      borderRadius: 5,
-      marginTop: 5,
-      backgroundColor: '#fff',
-    },
-    searchResultText: {
-      padding: 10,
-      fontSize: 16,
-      color: '#000',
-    },
-  });
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 20, // Adjust for status bar
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  tabsContainer: {
+    flexDirection: 'row',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  tabButton: {
+    marginHorizontal: 20,
+    paddingBottom: 5,
+  },
+  tabText: {
+    fontSize: 18,
+    color: '#888',
+  },
+  activeTabButton: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#A1A0FE',
+  },
+  activeTabText: {
+    color: '#333',
+    fontWeight: 'bold',
+  },
+  settingsIcon: {
+    // Positioned via header's justifyContent
+  },
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: 10,
+    paddingHorizontal: 20,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    backgroundColor: '#F5F5F5',
+    color: '#000',
+  },
+  searchButton: {
+    marginLeft: 10,
+    backgroundColor: '#A1A0FE',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+  },
+  searchButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  errorText: {
+    color: 'red',
+    marginHorizontal: 20,
+    marginTop: 5,
+    fontSize: 14,
+  },
+  searchResultsContainer: {
+    maxHeight: 200,
+    borderWidth: 1,
+    borderColor: '#CCC',
+    borderRadius: 5,
+    marginHorizontal: 20,
+    marginTop: 5,
+    backgroundColor: '#fff',
+  },
+  searchResultItem: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE',
+  },
+  searchResultText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  noResultsText: {
+    padding: 10,
+    fontSize: 16,
+    color: '#888',
+  },
+  followedListContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+  },
+  followedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    marginBottom: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    color: '#000000',
+  },
+  userIcon: {
+    marginRight: 10,
+    color: '#6C63FF',
+  },
+  closeButton: {
+    // Positioned at the end
+  },
+  closeIcon: {
+    color: 'red',
+  },
+  noContent: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: '#888',
+    marginTop: 20,
+  },
+});

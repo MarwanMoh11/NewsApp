@@ -1,3 +1,5 @@
+// components/ArticlePage.tsx
+
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -21,7 +23,7 @@ const ArticlePage: React.FC = () => {
   const [articleData, setArticleData] = useState<any>(null);
   const [relatedArticles, setRelatedArticles] = useState<any[]>([]);
   const [username, setUsername] = useState('');
-  const [allComments, setAllComments] = useState([]);
+  const [allComments, setAllComments] = useState<any[]>([]);
   const [comment, setComment] = useState('');
 
   const router = useRouter();
@@ -70,11 +72,11 @@ const ArticlePage: React.FC = () => {
 
   const fetchArticleIdAndDetails = async () => {
     try {
-      const idResponse = await fetch(`${domaindynamo}/get-article-id`,{
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ token: userToken })
-          });
+      const idResponse = await fetch(`${domaindynamo}/get-article-id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken })
+      });
       if (!idResponse.ok) {
         throw new Error('Failed to fetch article ID');
       }
@@ -167,12 +169,15 @@ const ArticlePage: React.FC = () => {
       return;
     }
 
+    if (comment.trim() === '') {
+      Alert.alert('Error', 'Comment cannot be empty.');
+      return;
+    }
+
     try {
       const response = await fetch(`${domaindynamo}/comment_article`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // We still send username and article_id. Ideally, decode username from token on server.
-        // If your backend now uses token, send { token: userToken, content: comment, parent_comment_id: null, article_id: articleData.id }
         body: JSON.stringify({ article_id: articleData.id, username, content: comment, parent_comment_id: null }),
       });
 
@@ -181,7 +186,6 @@ const ArticlePage: React.FC = () => {
       if (response.ok && responseData.status === 'Success') {
         if (Platform.OS === 'web') {
           alert('Success: Comment has been posted');
-          router.push('/articlepage');
         } else {
           Alert.alert('Success', 'Comment has been posted');
         }
@@ -208,7 +212,6 @@ const ArticlePage: React.FC = () => {
     }
 
     try {
-      // Use token-based endpoint for share_articles (assuming backend updated)
       const response = await fetch(`${domaindynamo}/share_articles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -268,7 +271,6 @@ const ArticlePage: React.FC = () => {
     }
 
     try {
-      // Update this endpoint similarly if it requires token decoding of username
       const response = await fetch(`${domaindynamo}/save-articles`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -293,18 +295,18 @@ const ArticlePage: React.FC = () => {
     }
   };
 
-  const renderCommentCard = ({ item }) => {
-    const formatDate = (isoDate) => {
+  const renderCommentCard = ({ item }: { item: any }) => {
+    const formatDate = (isoDate: string) => {
       const date = new Date(isoDate);
       return date.toLocaleString();
     };
 
     return (
       <View style={styles.commentCard}>
-        <View style={styles.cardContent}>
-          <Icon name="person" size={30} style={styles.userIcon} />
-          <View>
-            <Text style={styles.userName}>{item.username}</Text>
+        <View style={styles.commentHeader}>
+          <Icon name="person-circle-outline" size={40} color="#6C63FF" />
+          <View style={styles.commentInfo}>
+            <Text style={styles.commentUsername}>{item.username}</Text>
             <Text style={styles.commentDate}>{formatDate(item.created_at)}</Text>
           </View>
         </View>
@@ -314,11 +316,11 @@ const ArticlePage: React.FC = () => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Back Button */}
       <TouchableOpacity style={styles.backIcon} onPress={() => router.back()}>
-        <Icon name="arrow-back" size={30} color="black" />
+        <Icon name="arrow-back" size={30} color="#6C63FF" />
       </TouchableOpacity>
-      <Text style={styles.header}>Article Detail</Text>
 
       {articleData ? (
         <View style={styles.articleCard}>
@@ -340,32 +342,40 @@ const ArticlePage: React.FC = () => {
 
           <View style={styles.actionIcons}>
             <TouchableOpacity onPress={handleSave}>
-              <Icon name="bookmark-outline" size={30} color="#A1A0FE" />
+              <Icon name="bookmark-outline" size={30} color="#6C63FF" />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleShare(articleData.id)}>
-              <Icon name="share-outline" size={30} color="#A1A0FE" />
+              <Icon name="share-outline" size={30} color="#6C63FF" />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.commentContainer}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="Type your comment..."
-              placeholderTextColor="#FFFF00"
-              value={comment}
-              onChangeText={(text) => setComment(text)}
-            />
-            <TouchableOpacity
-              style={styles.postCommentButton}
-              onPress={() => postComment(comment)}
-            >
-              <Text style={styles.postButtonText}>Post Comment</Text>
-            </TouchableOpacity>
+          {/* Comment Section */}
+          <View style={styles.commentSection}>
+            <Text style={styles.commentsHeader}>Comments</Text>
+            {/* Comment Input */}
+            <View style={styles.commentInputContainer}>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="Type your comment..."
+                placeholderTextColor="#999"
+                value={comment}
+                onChangeText={(text) => setComment(text)}
+                multiline
+              />
+              <TouchableOpacity
+                style={styles.postCommentButton}
+                onPress={() => postComment(comment)}
+              >
+                <Icon name="send-outline" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Comments List */}
             <FlatList
               data={allComments}
               renderItem={renderCommentCard}
               keyExtractor={(item) => item.comment_id.toString()}
-              contentContainerStyle={styles.commentCard}
+              contentContainerStyle={styles.commentsList}
               ListEmptyComponent={
                 <Text style={styles.noComments}>
                   No comments yet. Be the first to comment!
@@ -379,16 +389,20 @@ const ArticlePage: React.FC = () => {
       )}
 
       <Text style={styles.relatedHeader}>Related Articles</Text>
-      {relatedArticles.map((article) => (
-        <TouchableOpacity
-          key={article.id}
-          style={styles.relatedCard}
-          onPress={() => handleRelatedArticlePress(article.id)}
-        >
-          <Text style={styles.relatedHeadline}>{article.headline}</Text>
-          <Text style={styles.relatedCategory}>Category: {article.category}</Text>
-        </TouchableOpacity>
-      ))}
+      {relatedArticles.length > 0 ? (
+        relatedArticles.map((article) => (
+          <TouchableOpacity
+            key={article.id}
+            style={styles.relatedCard}
+            onPress={() => handleRelatedArticlePress(article.id)}
+          >
+            <Text style={styles.relatedHeadline}>{article.headline}</Text>
+            <Text style={styles.relatedCategory}>Category: {article.category}</Text>
+          </TouchableOpacity>
+        ))
+      ) : (
+        <Text style={styles.noRelated}>No related articles found.</Text>
+      )}
     </ScrollView>
   );
 };
@@ -396,73 +410,163 @@ const ArticlePage: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F9F9F9',
-    paddingHorizontal: 20,
-    paddingTop: 40,
+    backgroundColor: '#F5F5F5',
+  },
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 40,
   },
   backIcon: {
-    marginBottom: 20,
+    marginBottom: 10,
   },
   header: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
+    color: '#6C63FF',
     marginBottom: 20,
+    alignSelf: 'center',
   },
   articleCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 15,
+    borderRadius: 15,
+    padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
   },
   headline: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#333333',
     marginBottom: 10,
   },
   category: {
     fontSize: 14,
-    color: '#777',
+    color: '#777777',
     marginBottom: 5,
   },
   date: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: 14,
+    color: '#999999',
     marginBottom: 5,
   },
   authors: {
     fontSize: 14,
-    color: '#555',
-    marginBottom: 10,
+    color: '#555555',
+    marginBottom: 15,
   },
   shortDescription: {
     fontSize: 16,
-    color: '#333',
+    color: '#444444',
+    lineHeight: 22,
     marginBottom: 20,
   },
   readMoreButton: {
-    backgroundColor: '#A1A0FE',
-    borderRadius: 5,
+    backgroundColor: '#6C63FF',
+    borderRadius: 25,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    alignItems: 'center',
+    alignSelf: 'flex-start',
     marginBottom: 20,
   },
   readMoreText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
+    fontSize: 16,
   },
   actionIcons: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+    marginBottom: 20,
+  },
+  commentSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    marginTop: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
+  },
+  commentsHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#6C63FF',
+    marginBottom: 15,
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+  },
+  commentInput: {
+    flex: 1,
+    height: 50,
+    borderColor: '#CCCCCC',
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    fontSize: 16,
+    color: '#333333',
+    backgroundColor: '#F9F9F9',
+    textAlignVertical: 'top',
+  },
+  postCommentButton: {
+    width: 50,
+    height: 50,
+    backgroundColor: '#6C63FF',
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  commentsList: {
+    paddingBottom: 10,
+  },
+  commentCard: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  commentInfo: {
+    flexDirection: 'column',
+    marginLeft: 10,
+  },
+  commentUsername: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  commentDate: {
+    fontSize: 12,
+    color: '#777777',
+    marginTop: 2,
+  },
+  commentText: {
+    fontSize: 16,
+    color: '#444444',
+  },
+  noComments: {
+    fontSize: 16,
+    color: '#777777',
+    textAlign: 'center',
+    marginTop: 20,
   },
   relatedHeader: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    color: '#6C63FF',
     marginVertical: 20,
   },
   relatedCard: {
@@ -471,99 +575,31 @@ const styles = StyleSheet.create({
     padding: 10,
     marginBottom: 15,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
     elevation: 3,
   },
   relatedHeadline: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#333333',
     marginBottom: 5,
   },
   relatedCategory: {
     fontSize: 14,
-    color: '#777',
+    color: '#777777',
+  },
+  noRelated: {
+    fontSize: 16,
+    color: '#777777',
+    textAlign: 'center',
   },
   loadingText: {
     fontSize: 16,
-    color: '#777',
+    color: '#777777',
     textAlign: 'center',
     marginTop: 20,
-  },
-  commentContainer: {
-    flex: 1,
-    backgroundColor: '#8a7fdc',
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    width: '95%',
-    marginBottom: 40,
-    paddingBottom: 40,
-  },
-  commentCard: {
-    backgroundColor: '#F7B8D2',
-    width: '98%',
-    marginTop: 20,
-    borderRadius: 15,
-    paddingBottom: 20,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  commentText: {
-    fontSize: 14,
-    color: '#000',
-    textAlign: 'left',
-    marginTop: 5,
-    paddingLeft: 25,
-  },
-  commentInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    fontSize: 16,
-    backgroundColor: '#F7B8D2',
-    color: '#000',
-  },
-  postCommentButton: {
-    marginLeft: 10,
-    backgroundColor: '#A1A0FE',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    marginTop: 15,
-  },
-  postButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  userIcon: {
-    marginRight: 10,
-    paddingLeft: 10,
-  },
-  userName: {
-    fontSize: 14,
-    color: '#000000',
-    marginBottom: 5,
-  },
-  noComments: {
-    fontSize: 16,
-    color: '#8a7fdc',
-    fontWeight: 'bold',
-    marginTop: 10,
-    alignSelf: 'center',
-    paddingBottom: 10,
-  },
-  commentDate: {
-    fontSize: 12,
-    color: '#555',
-    marginLeft: 10,
-    textAlign: 'right',
   },
 });
 

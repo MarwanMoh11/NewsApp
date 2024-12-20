@@ -7,7 +7,6 @@ const Layout: React.FC = () => {
     const router = useRouter();
 
     useEffect(() => {
-        router.push('/home');
     }, [router]);
 
     return (

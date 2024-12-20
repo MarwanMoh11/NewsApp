@@ -18,9 +18,9 @@ export default function PreferencesScreen() {
     "Health & Wellness": ['WELLNESS', 'HEALTHY LIVING', 'HEALTH'],
     "Sports": ['Football', 'Formula1', 'SPORTS'],
     "Technology & Gaming": ['TECH', 'Gaming'],
-    "Lifestyle": ['STYLE & BEAUTY', 'STYLE', 'TRAVEL', 'HOME & LIVING', 'FOOD & DRINK'],
-    "Arts & Entertainment": ['ENTERTAINMENT', 'CULTURE & ARTS', 'COMEDY', 'ARTS'],
-    "Other": ['MONEY', 'SCIENCE', 'PARENTING', 'CRIME', 'DIVORCE', 'WOMEN'],
+    "Lifestyle": ['STYLE & BEAUTY', 'Business', 'Travel', 'HOME & LIVING', 'FOOD & DRINK', 'Health'],
+    "Arts & Entertainment": ['Entertainment', 'CULTURE & ARTS', 'COMEDY', 'ARTS'],
+    "Other": ['MONEY', 'Science', 'PARENTING', 'CRIME', 'DIVORCE', 'WOMEN'],
   };
 
   useEffect(() => {

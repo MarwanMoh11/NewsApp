@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, FlatList, Alert, Image, ActivityIndicator, Platform } from 'react-native';
+// pages/SavedArticles.tsx
+
+import React, { useState, useEffect, useContext, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
-import CustomButton from '../components/ui/ChronicallyButton';
-import { UserContext } from '../app/UserContext'; // Adjust path as needed
+import { UserContext } from '../app/UserContext';
+import TweetCard from '../components/TweetCard';
+import ArticleCard from '../components/ArticleCard';
+import BackButton from '../components/ui/BackButton';
 
 const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
@@ -13,19 +24,12 @@ const SavedArticles: React.FC = () => {
   const [articlesAndTweets, setArticlesAndTweets] = useState<any[]>([]);
   const [username, setUsername] = useState('');
   const router = useRouter();
-  const { userToken, setUserToken } = useContext(UserContext); // Access token
+  const { userToken, setUserToken } = useContext(UserContext);
 
-  const formatToUTCT = (isoDate: string) => {
-    const date = new Date(isoDate);
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = date.getUTCFullYear();
-    return `${hours}:${minutes} ${day}-${month}-${year}`;
-  };
+  const lastOffset = useRef(0);
+  const [showButton, setShowButton] = useState(true); // Controls button visibility
 
-  const formatToUTCA = (isoDate: string) => {
+  const formatToUTCA = (isoDate: string): string => {
     const date = new Date(isoDate);
     const day = String(date.getUTCDate()).padStart(2, '0');
     const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -34,13 +38,14 @@ const SavedArticles: React.FC = () => {
   };
 
   useEffect(() => {
-    // Once we have a token, we can fetch the username and then fetch saved content
+    // Fetch username once the token is available
     if (userToken) {
       fetchUsername();
     }
   }, [userToken]);
 
   useEffect(() => {
+    // Fetch saved content once the username is available
     if (username) {
       fetchContent();
     }
@@ -52,7 +57,7 @@ const SavedArticles: React.FC = () => {
       const response = await fetch(`${domaindynamo}/get-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ token: userToken }),
       });
       const data = await response.json();
       if (data.status === 'Success' && data.username) {
@@ -165,7 +170,7 @@ const SavedArticles: React.FC = () => {
       console.log('Response Data:', data);
 
       if (data.status === 'Success') {
-          setUserToken(data.token);
+        setUserToken(data.token);
         router.push('/tweetpage');
       } else {
         Alert.alert('Error', 'Failed to set tweet data');
@@ -205,7 +210,7 @@ const SavedArticles: React.FC = () => {
         const response = await fetch(`${domaindynamo}/set-article-id`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({token: userToken, id: item.id }),
+          body: JSON.stringify({ token: userToken, id: item.id }),
         });
 
         const data = await response.json();
@@ -225,55 +230,40 @@ const SavedArticles: React.FC = () => {
     console.log('Rendering: ', item);
     if (item.type === 'article' && item.content_data) {
       return (
-        <TouchableOpacity style={styles.articleCard} onPress={() => handleContentPress(item)}>
-          <Image source={require('../assets/images/logo.png')} style={styles.logoImage} />
-          <Text style={styles.articleTitle}>{item.content_data.headline}</Text>
-          <Text style={styles.articleAuthor}>{item.content_data.authors}</Text>
-          <Text style={styles.articleDate}>{formatToUTCA(item.date)}</Text>
-        </TouchableOpacity>
+        <ArticleCard
+          item={item.content_data}
+          onPress={() => handleContentPress(item)}
+        />
       );
     } else if (item.type === 'tweet' && item.content_data) {
       return (
-        <TouchableOpacity style={styles.tweetCard} onPress={() => handleContentPressLive(item.content_data)}>
-          <Image source={{ uri: item.content_data.Media_URL }} style={styles.tweetImage} />
-          <Text style={styles.tweetUsername}>{item.content_data.Username}</Text>
-          <Text style={styles.tweetDate}>{formatToUTCT(item.content_data.Created_At)}</Text>
-          <Text style={styles.tweetText} numberOfLines={3} ellipsizeMode="tail">
-            {item.content_data.Tweet}
-          </Text>
-        </TouchableOpacity>
+        <TweetCard
+          item={item.content_data}
+          onPress={() => handleContentPressLive(item.content_data)}
+        />
       );
     }
     return null;
   };
 
-  const [isButtonVisible, setIsButtonVisible] = useState(true);
-
+  // Handle scroll to show/hide the button
   const handleScroll = (event: any) => {
-    const offsetY = event.nativeEvent.contentOffset.y;
-    setIsButtonVisible(offsetY < 100);
-  };
-
-  const handleHomePress = () => {
-    router.push('/mynews');
-  };
-
-  const handleBookmarkPress = () => {
-    router.push('/savedArticles');
-  };
-
-  const handleAddressBookPress = () => {
-    router.push('/followingPage');
-  };
-
-  const handleSearchPress = () => {
-    router.push('/searchPage');
+    const currentOffset = event.nativeEvent.contentOffset.y;
+    if (currentOffset > lastOffset.current && currentOffset > 50) {
+      // Scrolling Down
+      if (showButton) setShowButton(false);
+    } else if (currentOffset < lastOffset.current) {
+      // Scrolling Up
+      if (!showButton) setShowButton(true);
+    }
+    lastOffset.current = currentOffset;
   };
 
   if (loading) {
     return (
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#0000ff" />
+        <ActivityIndicator size="large" color="#6C63FF" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
@@ -288,17 +278,17 @@ const SavedArticles: React.FC = () => {
 
   return (
     <View style={styles.container}>
+      {/* Header with Back Button and "Saved Articles" Title */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/settings')} style={styles.settingsIcon}>
-          <Icon name="settings-outline" size={24} color="#888" />
-        </TouchableOpacity>
+        <BackButton />
+        <Text style={styles.headerTitle}>Saved Articles</Text>
       </View>
 
       <FlatList
         data={articlesAndTweets}
         renderItem={renderContentCard}
         keyExtractor={(item, index) => `${item.type}-${index}`}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={styles.listContainer}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         ListEmptyComponent={
@@ -307,23 +297,9 @@ const SavedArticles: React.FC = () => {
           </View>
         }
       />
-
-      {isButtonVisible && (
-        <CustomButton
-          barButtons={[
-            { iconName: 'home', onPress: handleHomePress },
-            { iconName: 'bookmark', onPress: handleBookmarkPress },
-            { iconName: 'address-book', onPress: handleAddressBookPress },
-            { iconName: 'search', onPress: handleSearchPress },
-          ]}
-        />
-      )}
     </View>
   );
 };
-
-export default SavedArticles;
-
 
 const styles = StyleSheet.create({
   logoImage: {
@@ -340,81 +316,33 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  errorText: {
+  loadingText: {
+    marginTop: 10,
     fontSize: 16,
     color: '#888',
   },
+  errorText: {
+    fontSize: 16,
+    color: 'red',
+  },
   header: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
     alignItems: 'center',
     paddingHorizontal: 20,
-    marginTop: 40,
+    paddingTop: 60, // Adjust if you have a safe area or need more spacing
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
-    paddingBottom: 10,
   },
-  settingsIcon: {
-    position: 'absolute',
-    right: 20,
-  },
-  contentContainer: {
-    paddingHorizontal: 15,
-  },
-  articleCard: {
-    backgroundColor: '#8A7FDC',
-    borderRadius: 10,
-    marginBottom: 15,
-    padding: 10,
-    alignSelf: 'center',
-    width: 500,
-  },
-  articleTitle: {
-    fontSize: 16,
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333333',
   },
-  articleAuthor: {
-    fontSize: 12,
-    color: '#333333',
-  },
-  articleDate: {
-    fontSize: 12,
-    color: '#333333',
-  },
-  tweetCard: {
-    backgroundColor: '#2A2B2E',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    overflow: 'hidden',
-    width: 500,
-    alignSelf: 'center',
-  },
-  tweetUsername: {
-    color: '#8A7FDC',
-    fontSize: 18,
-    marginBottom: 4,
-    fontWeight: 'bold',
-  },
-  tweetText: {
-    fontSize: 14,
-    color: '#A9A9A9',
-    lineHeight: 20,
-  },
-  tweetDate: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginBottom: 8,
-  },
-  tweetImage: {
-    height: 300,
-    width: 'auto',
-    resizeMode: 'contain',
+  listContainer: {
+    paddingVertical: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -427,3 +355,5 @@ const styles = StyleSheet.create({
     color: '#888',
   },
 });
+
+export default SavedArticles;

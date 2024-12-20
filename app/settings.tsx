@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Switch, Pl
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { UserContext } from '../app/UserContext'; // Adjust the path as needed
+import BackButton from '../components/ui/BackButton';
 
 const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
 
@@ -55,7 +56,7 @@ const SettingsScreen: React.FC = () => {
 
   const logout = () => {
     // On logout, navigate to home or perform any logout logic
-    router.push('/home');
+    router.push('/');
   };
 
   const handleDeactivation = async () => {
@@ -68,12 +69,12 @@ const SettingsScreen: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // Assuming backend now accepts token
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ username: username })
       });
 
       if (deactivateresponse.ok) {
         console.log(`Deactivating account for: ${username}`);
-        router.push('/home');
+        router.push('/');
       } else {
         const errorData = await deactivateresponse.json();
         console.error('Deactivation failed:', errorData.message);
@@ -94,12 +95,12 @@ const SettingsScreen: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // Assuming backend now accepts token
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ username: username })
       });
 
       if (deleteResponse.ok) {
         console.log(`Deleting account for: ${username}`);
-        router.push('/home');
+        router.push('/');
       } else {
         const errorData = await deleteResponse.json();
         console.error('Deletion failed:', errorData.message);
@@ -155,6 +156,7 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <View style={[styles.mainContainer, isDarkThemeEnabled && styles.darkTheme]}>
+     <BackButton />
       <View style={styles.sidebar}>
         <Text style={styles.profileName}>{username || 'User'}</Text>
         <ScrollView>
@@ -231,11 +233,12 @@ const styles = StyleSheet.create({
     margin: 15,
   },
   profileName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 20,
-  },
+  fontSize: 18,
+  fontWeight: 'bold',
+  color: '#fff',
+  marginBottom: 15,
+  marginTop: 60, // Adjust this value as needed to move the name down
+},
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

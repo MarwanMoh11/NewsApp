@@ -1,3 +1,5 @@
+// components/TweetPage.tsx
+
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -10,7 +12,10 @@ import {
   Linking,
   Platform,
   FlatList,
-  TextInput
+  TextInput,
+  KeyboardAvoidingView,
+  ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -22,7 +27,13 @@ const TweetPage: React.FC = () => {
   const [tweetData, setTweetData] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [comment, setComment] = useState('');
-  const [allComments, setAllComments] = useState([]);
+  const [allComments, setAllComments] = useState<any[]>([]);
+
+  // States for image handling similar to TweetCard
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(false);
+
   const router = useRouter();
   const { userToken } = useContext(UserContext);
 
@@ -36,6 +47,11 @@ const TweetPage: React.FC = () => {
   useEffect(() => {
     if (tweetData) {
       fetchComments();
+      if (tweetData.Media_URL) {
+        // Start loading the image
+        setIsLoading(true);
+        calculateAspectRatio(tweetData.Media_URL);
+      }
     }
   }, [tweetData]);
 
@@ -45,7 +61,7 @@ const TweetPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/get-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ token: userToken }),
       });
       const data = await response.json();
       if (data.status === 'Success' && data.username) {
@@ -65,7 +81,7 @@ const TweetPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/get-tweettodisp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken })
+        body: JSON.stringify({ token: userToken }),
       });
       const data = await response.json();
       if (data.status === 'Success') {
@@ -85,7 +101,7 @@ const TweetPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/get_comments_tweet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, tweet_link: tweetData.Tweet_Link })
+        body: JSON.stringify({ token: userToken, tweet_link: tweetData.Tweet_Link }),
       });
 
       const data = await response.json();
@@ -99,6 +115,35 @@ const TweetPage: React.FC = () => {
       console.error('Error fetching comments:', error);
       setAllComments([]);
     }
+  };
+
+  // Mimic the TweetCard image handling approach
+  const calculateAspectRatio = (uri: string) => {
+    const screenWidth = Dimensions.get('window').width;
+    const cardWidth = screenWidth * 0.95; // 95% of screen width
+    const MAX_IMAGE_HEIGHT = 300; // Maximum height for the image
+
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (height !== 0) {
+          const ratio = width / height;
+          const calculatedHeight = cardWidth / ratio;
+          if (calculatedHeight > MAX_IMAGE_HEIGHT) {
+            setAspectRatio(cardWidth / MAX_IMAGE_HEIGHT);
+          } else {
+            setAspectRatio(ratio);
+          }
+        }
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('Failed to get image size:', error);
+        setAspectRatio(16 / 9); // Fallback aspect ratio
+        setHasError(true);
+        setIsLoading(false);
+      }
+    );
   };
 
   const handleShare = async (tweetLink: string) => {
@@ -142,27 +187,37 @@ const TweetPage: React.FC = () => {
       return;
     }
 
-    const response = await fetch(`${domaindynamo}/save-tweets`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
-    });
+    try {
+      const response = await fetch(`${domaindynamo}/save-tweets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
+      });
 
-    const data = await response.json();
-    if (response.ok && data.status === 'Success') {
-      Platform.OS === 'web'
-        ? alert('Tweet saved successfully!')
-        : Alert.alert('Success', 'Tweet saved successfully!');
-    } else {
-      Platform.OS === 'web'
-        ? alert('Error: Tweet could not be saved')
-        : Alert.alert('Error', 'Tweet could not be saved');
+      const data = await response.json();
+      if (response.ok && data.status === 'Success') {
+        Platform.OS === 'web'
+          ? alert('Tweet saved successfully!')
+          : Alert.alert('Success', 'Tweet saved successfully!');
+      } else {
+        Platform.OS === 'web'
+          ? alert('Error: Tweet could not be saved')
+          : Alert.alert('Error', 'Tweet could not be saved');
+      }
+    } catch (error) {
+      console.error('Error saving tweet', error);
+      Alert.alert('Error', 'Unable to save tweet');
     }
   };
 
-  const postComment = async (comment: string) => {
+  const postComment = async (content: string) => {
     if (!userToken || !tweetData) {
       Alert.alert('Error', 'You must be logged in and have a tweet loaded to comment.');
+      return;
+    }
+
+    if (content.trim() === '') {
+      Alert.alert('Error', 'Comment cannot be empty.');
       return;
     }
 
@@ -170,7 +225,12 @@ const TweetPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/comment_tweet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({username: username,tweet_link: tweetData.Tweet_Link, content: comment, parent_comment_id: null }),
+        body: JSON.stringify({
+          username: username,
+          tweet_link: tweetData.Tweet_Link,
+          content: content,
+          parent_comment_id: null,
+        }),
       });
 
       const responseData = await response.json();
@@ -178,7 +238,6 @@ const TweetPage: React.FC = () => {
       if (response.ok && responseData.status === 'Success') {
         if (Platform.OS === 'web') {
           alert('Success: Comment has been posted');
-          router.push('/tweetpage');
         } else {
           Alert.alert('Success', 'Comment has been posted');
         }
@@ -198,268 +257,396 @@ const TweetPage: React.FC = () => {
     }
   };
 
-  const renderCommentCard = ({ item }) => {
-    const formatDate = (isoDate) => {
-      const date = new Date(isoDate);
-      return date.toLocaleString();
-    };
-
-    return (
-      <View style={styles.commentCard}>
-        <View style={styles.cardContent}>
-          <Icon name="person" size={30} style={styles.userIcon} />
-          <View style={styles.commentHeader}>
-            <Text style={styles.userName}>{item.username}</Text>
-            <Text style={styles.commentDate}>{formatDate(item.created_at)}</Text>
-          </View>
-        </View>
-        <Text style={styles.commentText}>{item.content}</Text>
-      </View>
-    );
+  const renderCommentCard = ({ item }: { item: any }) => {
+    return <CommentCard comment={item} />;
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <TouchableOpacity style={styles.backIcon} onPress={() => router.back()}>
-        <Icon name="arrow-back" size={30} color="black" />
-      </TouchableOpacity>
-      <Text style={styles.header}>News Detail</Text>
+    <KeyboardAvoidingView
+      style={styles.keyboardAvoidingView}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        {/* Back Button */}
+        <TouchableOpacity style={styles.backIcon} onPress={() => router.back()}>
+          <Icon name="arrow-back" size={30} color="#6C63FF" />
+        </TouchableOpacity>
 
-      {tweetData ? (
-        <>
-          <View style={styles.tweetCard}>
-            <View style={styles.tweetHeader}>
-              <Image
-                source={{ uri: 'https://via.placeholder.com/50' }}
-                style={styles.avatar}
-              />
-              <View>
-                <Text style={styles.username}>{tweetData.Username}</Text>
-                <Text style={styles.timestamp}>{tweetData.Created_At}</Text>
+        {tweetData ? (
+          <>
+            {/* Tweet Card */}
+            <View style={styles.tweetCard}>
+              {/* Tweet Header */}
+              <View style={styles.tweetHeader}>
+                <Image
+                  source={{ uri: 'https://via.placeholder.com/50' }}
+                  style={styles.avatar}
+                />
+                <View style={styles.userInfo}>
+                  <Text style={styles.username}>{tweetData.Username}</Text>
+                  <Text style={styles.timestamp}>{new Date(tweetData.Created_At).toLocaleString()}</Text>
+                </View>
+              </View>
+
+              {/* Tweet Text */}
+              <Text style={styles.tweetText}>{tweetData.Tweet}</Text>
+
+              {/* Tweet Media (Mimic TweetCard) */}
+              {tweetData.Media_URL && (
+                <TouchableOpacity onPress={() => handleMediaPress(tweetData.Tweet_Link)}>
+                  <View style={styles.imageContainer}>
+                    {isLoading && (
+                      <ActivityIndicator
+                        style={styles.loadingIndicator}
+                        size="small"
+                        color="#6C63FF"
+                      />
+                    )}
+                    {!hasError ? (
+                      <Image
+                        source={{ uri: tweetData.Media_URL }}
+                        style={[
+                          styles.tweetImage,
+                          {
+                            aspectRatio: aspectRatio,
+                            maxHeight: 300,
+                          },
+                        ]}
+                        resizeMode="contain"
+                        onLoadStart={() => {
+                          setIsLoading(true);
+                          setHasError(false);
+                        }}
+                        onLoad={() => setIsLoading(false)}
+                        onError={(e) => {
+                          console.error('Failed to load image:', e.nativeEvent.error);
+                          setHasError(true);
+                          setIsLoading(false);
+                        }}
+                        accessibilityLabel="Tweet image"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.tweetImage,
+                          { aspectRatio: aspectRatio, justifyContent: 'center', alignItems: 'center' },
+                        ]}
+                      >
+                        <Text style={styles.errorText}>Image Failed to Load</Text>
+                      </View>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              )}
+
+              {/* Tweet Stats */}
+              <View style={styles.stats}>
+                <View style={styles.statItem}>
+                  <Icon name="repeat-outline" size={20} color="#555" />
+                  <Text style={styles.statText}>Retweets: {tweetData.Retweets || 0}</Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Icon name="heart-outline" size={20} color="#555" />
+                  <Text style={styles.statText}>Likes: {tweetData.Favorites || 0}</Text>
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.actionButtons}>
+                <TouchableOpacity onPress={() => handleSave(tweetData.Tweet_Link)}>
+                  <Icon name="bookmark-outline" size={30} color="#6C63FF" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleShare(tweetData.Tweet_Link)}>
+                  <Icon name="share-outline" size={30} color="#6C63FF" />
+                </TouchableOpacity>
               </View>
             </View>
-            <Text style={styles.tweetText}>{tweetData.Tweet}</Text>
-            {tweetData.Media_URL && (
-              <TouchableOpacity onPress={() => handleMediaPress(tweetData.Tweet_Link)}>
-                <Image
-                  source={{ uri: tweetData.Media_URL }}
-                  style={styles.media}
-                  resizeMode="contain"
-                />
-              </TouchableOpacity>
+
+            {/* AI Depth Explanation */}
+            {tweetData.Explanation && (
+              <View style={styles.aiExplanationContainer}>
+                <Text style={styles.aiExplanationHeader}>AI Depth Explanation</Text>
+                <Text style={styles.aiExplanationText}>{tweetData.Explanation}</Text>
+              </View>
             )}
-            <View style={styles.stats}>
-              <Text style={styles.stat}>Retweets: {tweetData.Retweets || 0}</Text>
-              <Text style={styles.stat}>Likes: {tweetData.Favorites || 0}</Text>
+
+            {/* Comment Section */}
+            <View style={styles.commentSection}>
+              <Text style={styles.commentsHeader}>Comments</Text>
+              {/* Comment Input */}
+              <View style={styles.commentInputContainer}>
+                <TextInput
+                  style={styles.commentInput}
+                  placeholder="Type your comment..."
+                  placeholderTextColor="#999"
+                  value={comment}
+                  onChangeText={(text) => setComment(text)}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={styles.postCommentButton}
+                  onPress={() => postComment(comment)}
+                >
+                  <Icon name="send-outline" size={24} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Comments List */}
+              <FlatList
+                data={allComments}
+                renderItem={renderCommentCard}
+                keyExtractor={(item) => item.comment_id.toString()}
+                contentContainerStyle={styles.commentsList}
+                ListEmptyComponent={
+                  <Text style={styles.noComments}>
+                    No comments yet. Be the first to comment!
+                  </Text>
+                }
+              />
             </View>
-          </View>
+          </>
+        ) : (
+          <Text style={styles.loadingText}>Loading tweet details...</Text>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+};
 
-          <Text style={styles.aiExplanationHeader}>AI Depth Explanation</Text>
-          <Text style={styles.aiExplanationText}>{tweetData.Explanation}</Text>
+// Extracted CommentCard Component for Better Code Organization
+interface CommentCardProps {
+  comment: {
+    username: string;
+    created_at: string;
+    content: string;
+  };
+}
 
-          <View style={styles.actionIcons}>
-            <TouchableOpacity onPress={() => handleSave(tweetData.Tweet_Link)}>
-              <Icon name="bookmark-outline" size={30} color="#A1A0FE" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleShare(tweetData.Tweet_Link)}>
-              <Icon name="share-outline" size={30} color="#A1A0FE" />
-            </TouchableOpacity>
-          </View>
-          <View style={styles.commentContainer}>
-            <TextInput
-              style={styles.commentInput}
-              placeholder="Type your comment..."
-              placeholderTextColor="#FFFF00"
-              value={comment}
-              onChangeText={(text) => setComment(text)}
-            />
-            <TouchableOpacity
-              style={styles.postCommentButton}
-              onPress={() => postComment(comment)}
-            >
-              <Text style={styles.postButtonText}>Post Comment</Text>
-            </TouchableOpacity>
-            <FlatList
-              data={allComments}
-              renderItem={renderCommentCard}
-              keyExtractor={(item) => item.comment_id.toString()}
-              contentContainerStyle={styles.commentCard}
-              ListEmptyComponent={
-                <Text style={styles.noComments}>
-                  No comments yet. Be the first to comment!
-                </Text>
-              }
-            />
-          </View>
-        </>
-      ) : (
-        <Text style={styles.loadingText}>Loading tweet details...</Text>
-      )}
-    </ScrollView>
+const CommentCard: React.FC<CommentCardProps> = ({ comment }) => {
+  const formatDate = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    return date.toLocaleString();
+  };
+
+  return (
+    <View style={styles.commentCard}>
+      <View style={styles.commentHeader}>
+        <Icon name="person-circle-outline" size={40} color="#6C63FF" />
+        <View style={styles.commentInfo}>
+          <Text style={styles.commentUsername}>{comment.username}</Text>
+          <Text style={styles.commentDate}>{formatDate(comment.created_at)}</Text>
+        </View>
+      </View>
+      <Text style={styles.commentText}>{comment.content}</Text>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  keyboardAvoidingView: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F9F9F9',
-    paddingHorizontal: 20,
-    paddingTop: 40,
+    backgroundColor: '#F5F5F5',
+  },
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 40,
   },
   backIcon: {
-    marginBottom: 20,
-  },
-  header: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    marginBottom: 10,
   },
   tweetCard: {
-    backgroundColor: '#000000',
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
     marginBottom: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
-    elevation: 3,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 5,
   },
   tweetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 15,
   },
   avatar: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    marginRight: 10,
+    marginRight: 15,
+  },
+  userInfo: {
+    flexDirection: 'column',
   },
   username: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#333333',
   },
   timestamp: {
-    fontSize: 12,
-    color: '#CCCCCC',
+    fontSize: 14,
+    color: '#777777',
+    marginTop: 4,
   },
   tweetText: {
     fontSize: 16,
-    color: '#FFFFFF',
-    marginBottom: 10,
+    color: '#444444',
+    marginBottom: 15,
   },
-  media: {
+  imageContainer: {
+    position: 'relative',
     width: '100%',
-    height: 200,
-    marginTop: 10,
-    borderRadius: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 12,
+    backgroundColor: '#F0F0F0', // Fallback background color
+  },
+  loadingIndicator: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -10 }, { translateY: -10 }],
+    zIndex: 1,
+  },
+  tweetImage: {
+    width: '100%',
+  },
+  errorText: {
+    color: '#AA0000',
+    textAlign: 'center',
+    fontSize: 16,
   },
   stats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginBottom: 15,
   },
-  stat: {
+  statItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statText: {
+    marginLeft: 5,
     fontSize: 14,
-    color: '#CCCCCC',
+    color: '#555555',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  aiExplanationContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
   aiExplanationHeader: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#6C63FF',
     marginBottom: 10,
   },
   aiExplanationText: {
-    fontSize: 14,
-    color: '#555',
+    fontSize: 16,
+    color: '#555555',
+    lineHeight: 22,
+  },
+  commentSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 15,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
     marginBottom: 20,
   },
-  actionIcons: {
+  commentsHeader: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#6C63FF',
+    marginBottom: 15,
+  },
+  commentInputContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    marginBottom: 20,
+  },
+  commentInput: {
+    flex: 1,
+    height: 50,
+    borderColor: '#CCCCCC',
+    borderWidth: 1,
+    borderRadius: 25,
+    paddingHorizontal: 20,
+    fontSize: 16,
+    color: '#333333',
+    backgroundColor: '#F9F9F9',
+    textAlignVertical: 'top',
+  },
+  postCommentButton: {
+    width: 50,
+    height: 50,
+    backgroundColor: '#6C63FF',
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  commentsList: {
+    paddingBottom: 10,
+  },
+  commentCard: {
+    backgroundColor: '#F0F0F0',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 15,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  commentInfo: {
+    flexDirection: 'column',
+    marginLeft: 10,
+  },
+  commentUsername: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333333',
+  },
+  commentDate: {
+    fontSize: 12,
+    color: '#777777',
+    marginTop: 2,
+  },
+  commentText: {
+    fontSize: 16,
+    color: '#444444',
+  },
+  noComments: {
+    fontSize: 16,
+    color: '#777777',
+    textAlign: 'center',
     marginTop: 20,
   },
   loadingText: {
     fontSize: 16,
-    color: '#777',
+    color: '#777777',
     textAlign: 'center',
     marginTop: 50,
-  },
-
-  commentContainer: {
-    flex: 1,
-    backgroundColor: '#8a7fdc',
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    width: '95%',
-    marginBottom: 40,
-    paddingBottom: 40,
-  },
-  commentCard: {
-    backgroundColor: '#F7B8D2',
-    width: '98%',
-    marginTop: 20,
-    borderRadius: 15,
-    paddingBottom: 20,
-  },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  commentText: {
-    fontSize: 14,
-    color: '#000',
-    textAlign: 'left',
-    marginTop: 5,
-    paddingLeft: 25,
-  },
-  commentInput: {
-    flex: 1,
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    fontSize: 16,
-    backgroundColor: '#F7B8D2',
-    color: '#000',
-  },
-  postCommentButton: {
-    marginLeft: 10,
-    backgroundColor: '#A1A0FE',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    marginTop: 15,
-  },
-  postButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  userIcon: {
-    marginRight: 10,
-    paddingLeft: 10,
-  },
-  userName: {
-    fontSize: 14,
-    color: '#000000',
-    marginBottom: 5,
-  },
-  noComments: {
-    fontSize: 16,
-    color: '#8a7fdc',
-    fontWeight: 'bold',
-    marginTop: 10,
-    alignSelf: 'center',
-    paddingBottom: 10,
-  },
-  commentDate: {
-    fontSize: 12,
-    color: '#555',
-    marginLeft: 10,
-    textAlign: 'right',
   },
 });
 
