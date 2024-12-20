@@ -6,7 +6,7 @@ import { makeRedirectUri } from 'expo-auth-session';
 
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
 const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const LoginStatus: React.FC = () => {
   const router = useRouter();

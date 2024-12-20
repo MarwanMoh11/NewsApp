@@ -5,7 +5,7 @@ import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
 type IndustryType = string;
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 export default function PreferencesScreen() {
   const [selectedOptions, setSelectedOptions] = useState<IndustryType[]>([]);

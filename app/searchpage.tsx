@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -17,14 +17,16 @@ import CustomButton from '../components/ui/ChronicallyButton';
 import BackButton from '../components/ui/BackButton';
 import TweetCard from '../components/TweetCard'; // Reusable TweetCard component
 import ArticleCard from '../components/ArticleCard'; // Reusable ArticleCard component
+import { UserContext } from '../app/UserContext'; // Adjust path as needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const FollowingPage: React.FC = () => {
   const [searchUsername, setSearchUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const { userToken, setUserToken } = useContext(UserContext);
   const router = useRouter();
 
   useEffect(() => {
@@ -45,11 +47,12 @@ const FollowingPage: React.FC = () => {
       const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tweet }),
+        body: JSON.stringify({ token: userToken,tweet: tweet }),
       });
 
       const data = await response.json();
       if (data.status === 'Success') {
+          setUserToken(data.token)
         router.push('/tweetpage');
       } else {
         Alert.alert('Error', 'Failed to set tweet data');
@@ -90,11 +93,12 @@ const FollowingPage: React.FC = () => {
         const response = await fetch(`${domaindynamo}/set-article-id`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: content.id }),
+          body: JSON.stringify({ token: userToken, id: content.id }),
         });
 
         const data = await response.json();
         if (data.status === 'Success') {
+            setUserToken(data.token)
           router.push('/articlepage');
         } else {
           Alert.alert('Error', 'Failed to set article ID');

@@ -15,7 +15,7 @@ import CustomButton from '../components/ui/ChronicallyButton';
 import { UserContext } from '../app/UserContext';
 import TweetCard from '../components/TweetCard'; // Import the updated TweetCard
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const TrendingScreen: React.FC = () => {
   const [content, setContent] = useState<any[]>([]);

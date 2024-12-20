@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const TweetPage: React.FC = () => {
   const [tweetData, setTweetData] = useState<any>(null);
@@ -268,7 +268,7 @@ const TweetPage: React.FC = () => {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* Back Button */}
-        <TouchableOpacity style={styles.backIcon} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backIcon} onPress={() => router.push('/mynews')}>
           <Icon name="arrow-back" size={30} color="#6C63FF" />
         </TouchableOpacity>
 

@@ -14,7 +14,7 @@ import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
 import { useRouter } from 'expo-router';
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const RepostFeedPage: React.FC = () => {
   const [sharedContent, setSharedContent] = useState<any[]>([]);

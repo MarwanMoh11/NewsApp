@@ -31,7 +31,7 @@ const HomePage: React.FC = () => {
 
   const { userToken, setUserToken } = useContext(UserContext);
   const router = useRouter();
-  const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
   const lastOffset = useRef(0);
   const [showButton, setShowButton] = useState(true); // Controls button visibility
@@ -262,9 +262,9 @@ const HomePage: React.FC = () => {
   // Handle "See All" selection
   const handleSeeAll = () => {
     setIsSeeAll(true);
-    if (selectedCategory) {
-      fetchContent(selectedCategory);
-    }
+    setSelectedCategory(null);
+    fetchContent('all');
+
   };
 
   // Render individual content cards

@@ -17,7 +17,7 @@ import RepostFeedPage from '../app/repostfeed';
 import { UserContext } from '../app/UserContext';
 import BackButton from '../components/ui/BackButton';
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const FollowingPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('Add Friends');

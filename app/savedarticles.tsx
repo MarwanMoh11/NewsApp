@@ -16,7 +16,7 @@ import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
 import BackButton from '../components/ui/BackButton';
 
-const domaindynamo = 'https://keen-alfajores-31c262.netlify.app/.netlify/functions/index';
+const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const SavedArticles: React.FC = () => {
   const [loading, setLoading] = useState(true);
