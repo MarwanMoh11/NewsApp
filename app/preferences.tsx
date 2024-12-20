@@ -1,11 +1,30 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  FlatList,
+  ScrollView,
+  Alert,
+  Dimensions,
+  Platform
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
-type IndustryType = string;
-
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+
+const { width } = Dimensions.get('window');
+const isSmallScreen = width < 350;
+
+// Adjust font sizes based on screen width for responsiveness
+const baseFontSize = isSmallScreen ? 12 : 14;
+const headingFontSize = isSmallScreen ? 20 : 22;
+const sectionHeadingFontSize = isSmallScreen ? 14 : 16;
+const subHeadingFontSize = isSmallScreen ? 12 : 14;
+
+type IndustryType = string;
 
 export default function PreferencesScreen() {
   const [selectedOptions, setSelectedOptions] = useState<IndustryType[]>([]);
@@ -90,7 +109,7 @@ export default function PreferencesScreen() {
     );
   };
 
-  const handleResetPreferences = async (username) => {
+  const handleResetPreferences = async (username: string) => {
     if (!userToken || username === 'Guest') return;
 
     try {
@@ -147,6 +166,8 @@ export default function PreferencesScreen() {
     }
   };
 
+  const numColumns = width < 400 ? 2 : 3;
+
   const renderOption = ({ item }: { item: IndustryType }) => {
     const isSelected = selectedOptions.includes(item);
 
@@ -154,153 +175,168 @@ export default function PreferencesScreen() {
       <TouchableOpacity
         style={[styles.optionButton, isSelected && styles.selectedOptionButton]}
         onPress={() => toggleOption(item)}
+        activeOpacity={0.7}
       >
         <Text style={[styles.optionText, isSelected && styles.selectedOptionText]}>{item}</Text>
       </TouchableOpacity>
     );
   };
 
- return (
-  <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
-    <View style={styles.container}>
-      <TouchableOpacity style={styles.resetButton} onPress={() => handleResetPreferences(username)}>
-        <Text style={styles.resetButtonText}>Reset</Text>
-      </TouchableOpacity>
-      <Text style={styles.heading}>Hi {username},</Text>
-      <Text style={styles.subHeading}>What are your preferences from X and other News Sources?</Text>
+  return (
+    <ScrollView
+      contentContainerStyle={styles.scrollContainer}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.container}>
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={() => handleResetPreferences(username)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.resetButtonText}>Reset</Text>
+        </TouchableOpacity>
+        <Text style={styles.heading}>Hi {username},</Text>
+        <Text style={styles.subHeading}>What are your preferences?</Text>
 
-      {Object.entries(industriesByCategory).map(([category, options]) => (
-        <View style={styles.section} key={category}>
-          <Text style={styles.sectionHeading}>{category}</Text>
-          <FlatList
-            data={options}
-            keyExtractor={(item, index) => index.toString()}
-            renderItem={renderOption}
-            numColumns={3}
-            columnWrapperStyle={styles.rowStyle}
-            scrollEnabled={false}
-          />
-        </View>
-      ))}
+        {Object.entries(industriesByCategory).map(([category, options]) => (
+          <View style={styles.section} key={category}>
+            <Text style={styles.sectionHeading}>{category}</Text>
+            <FlatList
+              data={options}
+              keyExtractor={(item, index) => `${category}-${index}`}
+              renderItem={renderOption}
+              numColumns={numColumns}
+              columnWrapperStyle={styles.rowStyle}
+              scrollEnabled={false}
+              contentContainerStyle={{ paddingVertical: 5 }}
+            />
+          </View>
+        ))}
 
-      <TouchableOpacity
-        style={[styles.optionButton, styles.viewButton]}
-        onPress={() => handleViewClick(username)}
-      >
-        <Text style={[styles.optionText, styles.viewButtonText]}>VIEW</Text>
-      </TouchableOpacity>
-    </View>
-  </ScrollView>
-);};
+        <TouchableOpacity
+          style={[styles.optionButton, styles.viewButton]}
+          onPress={() => handleViewClick(username)}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.optionText, styles.viewButtonText]}>VIEW</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+const primaryColor = '#8A2BE2';
+const backgroundColor = '#F7F9FC';
+const cardColor = '#FFFFFF';
+const selectedColor = '#F7B8D2';
+const textColor = '#333333';
+const headingColor = '#000000';
+const subHeadingColor = '#555555';
 
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'center',
+    backgroundColor,
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   container: {
     flex: 1,
-    backgroundColor: '#F7F9FC',
-    padding: 20,
+    backgroundColor,
+    paddingTop: 60,
+    paddingBottom: 40,
   },
   resetButton: {
     position: 'absolute',
-    top: 20,
+    top: Platform.OS === 'ios' ? 50 : 20,
     right: 20,
     backgroundColor: '#FF6F61',
-    padding: 12,
-    borderRadius: 30,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
     zIndex: 10,
     elevation: 5,
   },
   resetButtonText: {
     color: '#FFF',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: baseFontSize,
   },
   heading: {
-    fontSize: 22,
+    fontSize: headingFontSize,
     fontWeight: 'bold',
-    color: '#000000',
+    color: headingColor,
     marginBottom: 10,
-    marginTop: 60,
   },
   subHeading: {
-    fontSize: 14,
-    color: '#555555',
+    fontSize: subHeadingFontSize,
+    color: subHeadingColor,
     marginBottom: 20,
   },
   section: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 10,
+    backgroundColor: cardColor,
+    borderRadius: 12,
+    padding: 15,
     marginBottom: 20,
     shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    shadowOpacity: 0.07,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   sectionHeading: {
-    fontSize: 16,
+    fontSize: sectionHeadingFontSize,
     fontWeight: 'bold',
-    color: '#333333',
+    color: textColor,
     marginBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#DDD',
     paddingBottom: 5,
   },
   rowStyle: {
-    justifyContent: 'space-evenly',
-    marginBottom: 10,
+    justifyContent: 'flex-start',
   },
   optionButton: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: cardColor,
     borderWidth: 1,
     borderColor: '#D1D8E0',
     borderRadius: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginHorizontal: 10,
-    marginVertical: 10,
-    width: 'auto',
-    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginRight: 10,
+    marginBottom: 10,
     justifyContent: 'center',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    minWidth: width < 400 ? (width / 3) - 30 : 100,
   },
   selectedOptionButton: {
-    backgroundColor: '#F7B8D2',
-    borderColor: '#F7B8D2',
+    backgroundColor: selectedColor,
+    borderColor: selectedColor,
     transform: [{ scale: 1.05 }],
     shadowOpacity: 0.2,
   },
   optionText: {
-    color: '#333',
-    fontSize: 14,
-    fontWeight: 'bold',
+    color: textColor,
+    fontSize: baseFontSize,
+    fontWeight: '600',
     textAlign: 'center',
     textTransform: 'capitalize',
   },
   selectedOptionText: {
     color: '#FFF',
-    fontSize: 14,
-    fontWeight: 'bold',
   },
   viewButton: {
     borderWidth: 1,
-    borderColor: '#8A2BE2',
+    borderColor: primaryColor,
     marginTop: 20,
     alignSelf: 'center',
     width: '50%',
-    backgroundColor: '#8A2BE2',
+    backgroundColor: primaryColor,
+    paddingVertical: 12,
   },
   viewButtonText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: baseFontSize,
     fontWeight: 'bold',
   },
 });

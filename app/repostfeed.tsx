@@ -232,13 +232,6 @@ const RepostFeedPage: React.FC = () => {
     );
   }
 
-  if (error) {
-    return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>Error: {error}</Text>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
