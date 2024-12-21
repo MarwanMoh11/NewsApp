@@ -9,7 +9,8 @@ const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const SettingsScreen: React.FC = () => {
   const router = useRouter();
-  const { userToken } = useContext(UserContext); // Access token from context
+  // Now we also destructure setUserToken so we can clear it on logout
+  const { userToken, setUserToken } = useContext(UserContext);
 
   const [isPushNotificationsEnabled, setIsPushNotificationsEnabled] = useState(false);
   const [isDarkThemeEnabled, setIsDarkThemeEnabled] = useState(false);
@@ -54,8 +55,9 @@ const SettingsScreen: React.FC = () => {
     setIsDarkThemeEnabled((prev) => !prev);
   };
 
+  // Updated logout function to reset the UserContext (remove token)
   const logout = () => {
-    // On logout, navigate to home or perform any logout logic
+    setUserToken(null);  // <-- Clear user token here
     router.push('/');
   };
 
@@ -156,7 +158,7 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <View style={[styles.mainContainer, isDarkThemeEnabled && styles.darkTheme]}>
-     <BackButton />
+      <BackButton />
       <View style={styles.sidebar}>
         <Text style={styles.profileName}>{username || 'User'}</Text>
         <ScrollView>
@@ -233,12 +235,12 @@ const styles = StyleSheet.create({
     margin: 15,
   },
   profileName: {
-  fontSize: 18,
-  fontWeight: 'bold',
-  color: '#fff',
-  marginBottom: 15,
-  marginTop: 60, // Adjust this value as needed to move the name down
-},
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 15,
+    marginTop: 60, // Adjust this value as needed
+  },
   menuItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',

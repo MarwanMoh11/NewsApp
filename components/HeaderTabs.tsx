@@ -1,23 +1,36 @@
-// components/HeaderTabs.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet
+} from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 interface HeaderTabsProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
+  activeTab: 'My News' | 'Trending';
+  setActiveTab: (tab: 'My News' | 'Trending') => void;
+  username: string | null; // null if user is not logged in
+  onLoginPress: () => void;
   onSettingsPress: () => void;
 }
 
-const HeaderTabs: React.FC<HeaderTabsProps> = ({ activeTab, setActiveTab, onSettingsPress }) => {
+const HeaderTabs: React.FC<HeaderTabsProps> = ({
+  activeTab,
+  setActiveTab,
+  username,
+  onLoginPress,
+  onSettingsPress
+}) => {
   return (
     <View style={styles.header}>
+      {/* Tabs: "My News" and "Trending" */}
       <View style={styles.tabsContainer}>
         {['My News', 'Trending'].map((tab) => (
           <TouchableOpacity
             key={tab}
             style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-            onPress={() => setActiveTab(tab)}
+            onPress={() => setActiveTab(tab as 'My News' | 'Trending')}
           >
             <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
               {tab}
@@ -25,12 +38,32 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({ activeTab, setActiveTab, onSett
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity onPress={onSettingsPress} style={styles.settingsIcon}>
-        <Icon name="settings-outline" size={24} color="#888" />
-      </TouchableOpacity>
+
+      {/* Right Side: If NOT logged in => "Login"; if logged in => username + a small Settings icon */}
+      <View style={styles.userSection}>
+        {!username ? (
+          // Show Login button if no username
+          <TouchableOpacity style={styles.loginBtn} onPress={onLoginPress}>
+            <Text style={styles.loginBtnText}>Login</Text>
+          </TouchableOpacity>
+        ) : (
+          // Show username & settings icon
+          <View style={styles.userNameContainer}>
+            <Text style={styles.userNameText}>{username}</Text>
+            <TouchableOpacity
+              style={styles.settingsIconButton}
+              onPress={onSettingsPress}
+            >
+              <Icon name="settings-outline" size={18} color="#444" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </View>
   );
 };
+
+export default HeaderTabs;
 
 const styles = StyleSheet.create({
   header: {
@@ -62,9 +95,31 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: 'bold',
   },
-  settingsIcon: {
-    padding: 5,
+  userSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  loginBtn: {
+    backgroundColor: '#8F80E0',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  loginBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  userNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  userNameText: {
+    fontSize: 16,
+    color: '#444',
+    marginRight: 10,
+  },
+  settingsIconButton: {
+    padding: 4,
   },
 });
-
-export default HeaderTabs;

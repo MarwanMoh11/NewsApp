@@ -159,7 +159,7 @@ export default function PreferencesScreen() {
       await Promise.all(addPreferencePromises);
 
       Alert.alert('Success', 'Your preferences have been saved.');
-      router.push('/mynews');
+      router.push('/');
     } catch (error) {
       console.error('Error handling view click:', error);
       Alert.alert('Error', 'Failed to save preferences.');

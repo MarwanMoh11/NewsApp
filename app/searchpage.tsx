@@ -205,7 +205,7 @@ const FollowingPage: React.FC = () => {
   };
 
   const handleHomePress = () => {
-    router.push('/mynews');
+    router.push('/');
   };
 
   const handleBookmarkPress = () => {

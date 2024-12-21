@@ -9,7 +9,7 @@ const BackButton: React.FC = () => {
   const router = useRouter();
 
   const handlePress = () => {
-    router.push('/mynews');
+    router.push('/');
   };
 
   return (

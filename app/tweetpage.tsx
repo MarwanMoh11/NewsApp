@@ -268,7 +268,7 @@ const TweetPage: React.FC = () => {
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
         {/* Back Button */}
-        <TouchableOpacity style={styles.backIcon} onPress={() => router.push('/mynews')}>
+        <TouchableOpacity style={styles.backIcon} onPress={() => router.push('/')}>
           <Icon name="arrow-back" size={30} color="#6C63FF" />
         </TouchableOpacity>
 

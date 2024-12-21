@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Alert,
   Dimensions,
+  Platform,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -62,6 +63,11 @@ const TrendingScreen: React.FC = () => {
   };
 
   const handleContentPress = async (item: any) => {
+      if (!userToken) {
+            Platform.OS === 'web'
+              ? alert('Login to Access More Features!')
+              : Alert.alert('Error', 'Login to Access More Features!');
+          } else {
     if (item.Tweet_Link) {
       try {
         const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
@@ -84,6 +90,7 @@ const TrendingScreen: React.FC = () => {
     } else {
       Alert.alert('Error', 'Invalid content type');
     }
+}
   };
 
   const renderContentCard = ({ item }: { item: any }) => (
@@ -104,20 +111,38 @@ const TrendingScreen: React.FC = () => {
   };
 
   const handleHomePress = () => {
-    router.push('/mynews');
+    router.push('/');
   };
 
   const handleBookmarkPress = () => {
+      if (!userToken) {
+            Platform.OS === 'web'
+              ? alert('Login to Access More Features!')
+              : Alert.alert('Error', 'Login to Access More Features!');
+          } else {
     router.push('/savedarticles');
+    }
   };
 
   const handleAddressBookPress = () => {
+      if (!userToken) {
+            Platform.OS === 'web'
+              ? alert('Login to Access More Features!')
+              : Alert.alert('Error', 'Login to Access More Features!');
+          } else {
     router.push('/followingpage');
+    }
   };
 
   const handleSearchPress = () => {
+      if (!userToken) {
+            Platform.OS === 'web'
+              ? alert('Login to Access More Features!')
+              : Alert.alert('Error', 'Login to Access More Features!');
+          } else {
     router.push('/searchpage');
     console.log('Search button pressed!');
+    }
   };
 
   return (
@@ -196,7 +221,7 @@ const styles = StyleSheet.create({
   },
   activityIndicatorContainer: {
     flex: 1,
-    justifyContent: 'center', // Adjust vertical position
+    justifyContent: 'flex-end', // Adjust vertical position to the lowest level
     alignItems: 'center', // Adjust horizontal position
   },
 });

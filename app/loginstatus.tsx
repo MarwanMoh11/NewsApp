@@ -54,7 +54,7 @@ const LoginStatus: React.FC = () => {
       body: JSON.stringify({ username: Nickname }),
     })
       .then(() => {
-        router.push('/mynews');
+        router.push('/');
       })
       .catch((err) => {
         console.error('Error reactivating account:', err);
@@ -120,7 +120,7 @@ const LoginStatus: React.FC = () => {
             );
           }
         } else {
-          router.push('/mynews');
+          router.push('/');
         }
       } else {
         router.push('/preferences');
