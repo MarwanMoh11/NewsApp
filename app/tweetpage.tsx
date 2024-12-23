@@ -23,6 +23,36 @@ import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
+// ----------------- CommentCard Component -----------------
+interface CommentCardProps {
+  comment: {
+    username: string;
+    created_at: string;
+    content: string;
+  };
+}
+
+const CommentCard: React.FC<CommentCardProps> = ({ comment }) => {
+  const formatDate = (isoDate: string): string => {
+    const date = new Date(isoDate);
+    return date.toLocaleString();
+  };
+
+  return (
+    <View style={styles.commentCard}>
+      <View style={styles.commentHeader}>
+        <Icon name="person-circle-outline" size={40} color="#6C63FF" />
+        <View style={styles.commentInfo}>
+          <Text style={styles.commentUsername}>{comment.username}</Text>
+          <Text style={styles.commentDate}>{formatDate(comment.created_at)}</Text>
+        </View>
+      </View>
+      <Text style={styles.commentText}>{comment.content}</Text>
+    </View>
+  );
+};
+// ----------------------------------------------------------
+
 const TweetPage: React.FC = () => {
   const [tweetData, setTweetData] = useState<any>(null);
   const [username, setUsername] = useState('');
@@ -33,6 +63,10 @@ const TweetPage: React.FC = () => {
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
+
+  // New states for explanation
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [isExplanationLoading, setIsExplanationLoading] = useState<boolean>(false);
 
   const router = useRouter();
   const { userToken } = useContext(UserContext);
@@ -48,9 +82,12 @@ const TweetPage: React.FC = () => {
     if (tweetData) {
       fetchComments();
       if (tweetData.Media_URL) {
-        // Start loading the image
+        // Start loading the image and calculate aspect ratio
         setIsLoading(true);
         calculateAspectRatio(tweetData.Media_URL);
+      }
+      if (tweetData.Tweet_Link) {
+        GenerateExplanation(tweetData.Tweet_Link);
       }
     }
   }, [tweetData]);
@@ -117,7 +154,6 @@ const TweetPage: React.FC = () => {
     }
   };
 
-  // Mimic the TweetCard image handling approach
   const calculateAspectRatio = (uri: string) => {
     const screenWidth = Dimensions.get('window').width;
     const cardWidth = screenWidth * 0.95; // 95% of screen width
@@ -129,12 +165,14 @@ const TweetPage: React.FC = () => {
         if (height !== 0) {
           const ratio = width / height;
           const calculatedHeight = cardWidth / ratio;
+          // If the image is super tall, cap it at max height
           if (calculatedHeight > MAX_IMAGE_HEIGHT) {
             setAspectRatio(cardWidth / MAX_IMAGE_HEIGHT);
           } else {
             setAspectRatio(ratio);
           }
         }
+        setHasError(false);
         setIsLoading(false);
       },
       (error) => {
@@ -175,12 +213,6 @@ const TweetPage: React.FC = () => {
     }
   };
 
-  const handleMediaPress = (tweetLink: string) => {
-    Linking.openURL(tweetLink).catch((err) =>
-      Alert.alert('Error', 'Failed to open tweet.')
-    );
-  };
-
   const handleSave = async (tweetLink: string) => {
     if (!userToken) {
       Alert.alert('Error', 'You must be logged in to save tweets.');
@@ -207,6 +239,84 @@ const TweetPage: React.FC = () => {
     } catch (error) {
       console.error('Error saving tweet', error);
       Alert.alert('Error', 'Unable to save tweet');
+    }
+  };
+
+  // Define the response interface
+  interface ExplainTweetResponse {
+    status: string;
+    explanation?: string;
+    message?: string;
+  }
+
+  const GenerateExplanation = async (link: string): Promise<string | null> => {
+    try {
+      console.debug(
+        `[GenerateExplanation] Sending POST request to ${domaindynamo}/explain_tweet with tweetlink: ${link}`
+      );
+      setIsExplanationLoading(true);
+
+      const requestBody = JSON.stringify({ tweetlink: link });
+      console.debug(`[GenerateExplanation] Request body: ${requestBody}`);
+
+      const response = await fetch(`${domaindynamo}/explain_tweet`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: requestBody,
+      });
+
+      console.debug(
+        `[GenerateExplanation] Received response: Status ${response.status} - ${response.statusText}`
+      );
+
+      const responseBody = await response.text(); // Read raw text first for debugging
+      console.debug(`[GenerateExplanation] Raw response body: ${responseBody}`);
+
+      let responseData: ExplainTweetResponse | null = null;
+      try {
+        responseData = JSON.parse(responseBody);
+        console.debug(`[GenerateExplanation] Parsed response data:`, responseData);
+      } catch (parseError) {
+        console.error(
+          `[GenerateExplanation] Failed to parse JSON response. Raw body: ${responseBody}`,
+          parseError
+        );
+        setExplanation(null);
+        return null;
+      }
+
+      if (response.ok) {
+        if (responseData.status === 'Success') {
+          console.debug(
+            `[GenerateExplanation] Explanation retrieved successfully for link: ${link}`
+          );
+          setExplanation(responseData.explanation || null);
+          return responseData.explanation || null;
+        } else {
+          console.warn(
+            `[GenerateExplanation] API responded with status: ${responseData.status}. Message: ${responseData.message}`
+          );
+          setExplanation(null);
+          return null;
+        }
+      } else {
+        console.error(
+          `[GenerateExplanation] HTTP error! Status: ${response.status}. Message: ${
+            responseData.message || 'No message in response'
+          }`
+        );
+        setExplanation(null);
+        return null;
+      }
+    } catch (networkError) {
+      console.error(
+        `[GenerateExplanation] Network error occurred while sending request to ${domaindynamo}/explain_tweet`,
+        networkError
+      );
+      setExplanation(null);
+      return null;
+    } finally {
+      setIsExplanationLoading(false);
     }
   };
 
@@ -284,59 +394,68 @@ const TweetPage: React.FC = () => {
                 />
                 <View style={styles.userInfo}>
                   <Text style={styles.username}>{tweetData.Username}</Text>
-                  <Text style={styles.timestamp}>{new Date(tweetData.Created_At).toLocaleString()}</Text>
+                  <Text style={styles.timestamp}>
+                    {new Date(tweetData.Created_At).toLocaleString()}
+                  </Text>
                 </View>
               </View>
 
               {/* Tweet Text */}
               <Text style={styles.tweetText}>{tweetData.Tweet}</Text>
 
-              {/* Tweet Media (Mimic TweetCard) */}
+              {/* Tweet Media */}
               {tweetData.Media_URL && (
-                <TouchableOpacity onPress={() => handleMediaPress(tweetData.Tweet_Link)}>
-                  <View style={styles.imageContainer}>
-                    {isLoading && (
-                      <ActivityIndicator
-                        style={styles.loadingIndicator}
-                        size="small"
-                        color="#6C63FF"
-                      />
-                    )}
-                    {!hasError ? (
-                      <Image
-                        source={{ uri: tweetData.Media_URL }}
-                        style={[
-                          styles.tweetImage,
-                          {
-                            aspectRatio: aspectRatio,
-                            maxHeight: 300,
-                          },
-                        ]}
-                        resizeMode="contain"
-                        onLoadStart={() => {
-                          setIsLoading(true);
-                          setHasError(false);
-                        }}
-                        onLoad={() => setIsLoading(false)}
-                        onError={(e) => {
-                          console.error('Failed to load image:', e.nativeEvent.error);
-                          setHasError(true);
-                          setIsLoading(false);
-                        }}
-                        accessibilityLabel="Tweet image"
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.tweetImage,
-                          { aspectRatio: aspectRatio, justifyContent: 'center', alignItems: 'center' },
-                        ]}
-                      >
-                        <Text style={styles.errorText}>Image Failed to Load</Text>
-                      </View>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                <View style={styles.imageContainer}>
+                  {isLoading && (
+                    <ActivityIndicator
+                      style={styles.loadingIndicator}
+                      size="small"
+                      color="#6C63FF"
+                    />
+                  )}
+
+                  {!isLoading && !hasError && (
+                    <Image
+                      source={{ uri: tweetData.Media_URL }}
+                      style={[
+                        styles.tweetImage,
+                        {
+                          aspectRatio: aspectRatio,
+                          maxHeight: 300,
+                        },
+                      ]}
+                      resizeMode="contain"
+                      accessibilityLabel="Tweet image"
+                    />
+                  )}
+
+                  {!isLoading && hasError && (
+                    <View
+                      style={[
+                        styles.tweetImage,
+                        {
+                          aspectRatio: aspectRatio,
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                        },
+                      ]}
+                    >
+                      <Text style={styles.errorText}>Image Failed to Load</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Button to view the full tweet in a browser */}
+              {tweetData.Tweet_Link && (
+                <View style={{ marginTop: 10, alignItems: 'flex-start' }}>
+                  <TouchableOpacity
+                    style={styles.viewFullTweetButton}
+                    onPress={() => Linking.openURL(tweetData.Tweet_Link)}
+                  >
+                    <Text style={styles.viewFullTweetButtonText}>View Full Tweet</Text>
+                  </TouchableOpacity>
+                </View>
               )}
 
               {/* Tweet Stats */}
@@ -363,12 +482,16 @@ const TweetPage: React.FC = () => {
             </View>
 
             {/* AI Depth Explanation */}
-            {tweetData.Explanation && (
-              <View style={styles.aiExplanationContainer}>
-                <Text style={styles.aiExplanationHeader}>AI Depth Explanation</Text>
-                <Text style={styles.aiExplanationText}>{tweetData.Explanation}</Text>
-              </View>
-            )}
+            <View style={styles.aiExplanationContainer}>
+              <Text style={styles.aiExplanationHeader}>AI Depth Explanation</Text>
+              {isExplanationLoading ? (
+                <ActivityIndicator size="large" color="#6C63FF" />
+              ) : explanation ? (
+                <Text style={styles.aiExplanationText}>{explanation}</Text>
+              ) : (
+                <Text style={styles.aiExplanationText}>No explanation available.</Text>
+              )}
+            </View>
 
             {/* Comment Section */}
             <View style={styles.commentSection}>
@@ -410,35 +533,6 @@ const TweetPage: React.FC = () => {
         )}
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-};
-
-// Extracted CommentCard Component for Better Code Organization
-interface CommentCardProps {
-  comment: {
-    username: string;
-    created_at: string;
-    content: string;
-  };
-}
-
-const CommentCard: React.FC<CommentCardProps> = ({ comment }) => {
-  const formatDate = (isoDate: string): string => {
-    const date = new Date(isoDate);
-    return date.toLocaleString();
-  };
-
-  return (
-    <View style={styles.commentCard}>
-      <View style={styles.commentHeader}>
-        <Icon name="person-circle-outline" size={40} color="#6C63FF" />
-        <View style={styles.commentInfo}>
-          <Text style={styles.commentUsername}>{comment.username}</Text>
-          <Text style={styles.commentDate}>{formatDate(comment.created_at)}</Text>
-        </View>
-      </View>
-      <Text style={styles.commentText}>{comment.content}</Text>
-    </View>
   );
 };
 
@@ -585,7 +679,7 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    height: 50,
+    minHeight: 50,
     borderColor: '#CCCCCC',
     borderWidth: 1,
     borderRadius: 25,
@@ -647,6 +741,16 @@ const styles = StyleSheet.create({
     color: '#777777',
     textAlign: 'center',
     marginTop: 50,
+  },
+  viewFullTweetButton: {
+    backgroundColor: '#6C63FF',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  viewFullTweetButtonText: {
+    color: '#FFF',
+    fontSize: 16,
   },
 });
 
