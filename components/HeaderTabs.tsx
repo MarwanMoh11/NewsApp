@@ -1,125 +1,149 @@
+// ------------------------------------------------------
+// HeaderTabs.tsx
+// ------------------------------------------------------
 import React from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  StyleSheet
+  Image,
+  StyleSheet,
+  Platform,
+  Animated, // Import Animated for opacity handling
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 interface HeaderTabsProps {
   activeTab: 'My News' | 'Trending';
-  setActiveTab: (tab: 'My News' | 'Trending') => void;
-  username: string | null; // null if user is not logged in
-  onLoginPress: () => void;
+  onTabPress: (tab: 'My News' | 'Trending') => void;
+  username?: string | null;
+  profilePictureUrl?: string | null;
   onSettingsPress: () => void;
+  onLoginPress: () => void;
+  headerOpacity: Animated.AnimatedInterpolation; // New prop for opacity
 }
 
 const HeaderTabs: React.FC<HeaderTabsProps> = ({
   activeTab,
-  setActiveTab,
+  onTabPress,
   username,
+  profilePictureUrl,
+  onSettingsPress,
   onLoginPress,
-  onSettingsPress
+  headerOpacity, // Destructure the new prop
 }) => {
   return (
-    <View style={styles.header}>
-      {/* Tabs: "My News" and "Trending" */}
+    // Animated.View to handle the opacity fade-out
+    <Animated.View style={[styles.headerContainer, { opacity: headerOpacity }]}>
+      {/* Tabs: My News / Trending */}
       <View style={styles.tabsContainer}>
-        {['My News', 'Trending'].map((tab) => (
-          <TouchableOpacity
-            key={tab}
-            style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-            onPress={() => setActiveTab(tab as 'My News' | 'Trending')}
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'My News' && styles.tabButtonActive]}
+          onPress={() => onTabPress('My News')}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === 'My News' && styles.tabButtonTextActive,
+            ]}
           >
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-              {tab}
-            </Text>
-          </TouchableOpacity>
-        ))}
+            My News
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabButton, activeTab === 'Trending' && styles.tabButtonActive]}
+          onPress={() => onTabPress('Trending')}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              activeTab === 'Trending' && styles.tabButtonTextActive,
+            ]}
+          >
+            Trending
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Right Side: If NOT logged in => "Login"; if logged in => username + a small Settings icon */}
-      <View style={styles.userSection}>
-        {!username ? (
-          // Show Login button if no username
-          <TouchableOpacity style={styles.loginBtn} onPress={onLoginPress}>
-            <Text style={styles.loginBtnText}>Login</Text>
-          </TouchableOpacity>
+      {/* Right: Settings + Profile */}
+      <View style={styles.headerRightIcons}>
+        <TouchableOpacity onPress={onSettingsPress}>
+          <Icon name="settings-outline" size={22} color="#333" style={styles.headerIcon} />
+        </TouchableOpacity>
+
+        {username ? (
+          <Image
+            source={
+              profilePictureUrl
+                ? { uri: profilePictureUrl }
+                : require('../assets/images/logo.png') // Fallback image
+            }
+            style={styles.userImage}
+          />
         ) : (
-          // Show username & settings icon
-          <View style={styles.userNameContainer}>
-            <Text style={styles.userNameText}>{username}</Text>
-            <TouchableOpacity
-              style={styles.settingsIconButton}
-              onPress={onSettingsPress}
-            >
-              <Icon name="settings-outline" size={18} color="#444" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={onLoginPress}>
+            <Icon name="person-circle-outline" size={24} color="#333" style={styles.headerIcon} />
+          </TouchableOpacity>
         )}
       </View>
-    </View>
+    </Animated.View>
   );
 };
 
 export default HeaderTabs;
 
 const styles = StyleSheet.create({
-  header: {
+  headerContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 40,
-    paddingHorizontal: 20,
+    paddingHorizontal: 10,
+    // Simplified top padding
+    paddingTop: Platform.OS !== 'web' ? 50 : 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    borderBottomColor: '#E2E2E2',
+    backgroundColor: '#FFF', // Ensure background color for proper opacity
+    // Shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    // Elevation for Android
+    elevation: 2,
   },
   tabsContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   tabButton: {
-    marginHorizontal: 20,
-    paddingBottom: 5,
-  },
-  tabText: {
-    fontSize: 18,
-    color: '#888',
-  },
-  activeTabButton: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#A1A0FE',
-  },
-  activeTabText: {
-    color: '#333',
-    fontWeight: 'bold',
-  },
-  userSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  loginBtn: {
-    backgroundColor: '#8F80E0',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  loginBtnText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  userNameContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userNameText: {
-    fontSize: 16,
-    color: '#444',
     marginRight: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 6,
   },
-  settingsIconButton: {
-    padding: 4,
+  tabButtonActive: {
+    backgroundColor: '#6C63FF',
+  },
+  tabButtonText: {
+    color: '#333',
+  },
+  tabButtonTextActive: {
+    color: '#FFF',
+  },
+  headerRightIcons: {
+    marginLeft: 'auto',
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerIcon: {
+    marginLeft: 15,
+  },
+  userImage: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    marginLeft: 15,
   },
 });

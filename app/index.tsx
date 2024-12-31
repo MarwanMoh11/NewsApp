@@ -1,3 +1,6 @@
+// ------------------------------------------------------
+// HomePage.tsx
+// ------------------------------------------------------
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   View,
@@ -7,39 +10,41 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Platform
+  Platform,
+  ScrollView,
+  Image,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
-import { SafeAreaView } from 'react-native-safe-area-context'; // optional
-import { UserContext } from '../app/UserContext'; // Adjust path as needed
 
-import CustomButtonWithBar from '../components/ui/ChronicallyButton.tsx'; // Ensure correct path
+import { UserContext } from '../app/UserContext';
 import TrendingScreen from '../app/trending';
-import TweetCard from '../components/TweetCard'; // Reusable TweetCard component
-import ArticleCard from '../components/ArticleCard'; // Reusable ArticleCard component
-import CategoryFilter from '../components/CategoryFilter'; // Reusable CategoryFilter component
 
-// NOTE: This is the NEW HeaderTabs that includes the dynamic top-right login/username
-import HeaderTabs from '../components/HeaderTabs.tsx';
+// New Reusable Components
+import HeaderTabs from '../components/HeaderTabs';
+import ChronicallyButton from '../components/ui/ChronicallyButton';
+import TweetCard from '../components/TweetCard';
+import ArticleCard from '../components/ArticleCard';
 
 // ------------------ AUTH0 CONFIG ------------------
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
 const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
 
 const redirectUri = makeRedirectUri({
-  useProxy: Platform.OS !== 'web', // Use the Expo proxy if not on web
-  path: 'loginstatus',             // must match your Auth0 callback route
+  useProxy: Platform.OS !== 'web',
+  path: 'loginstatus',
 });
 // --------------------------------------------------
 
 const HomePage: React.FC = () => {
-  // Auth0 login states
+  // ------------------ States ------------------
+  const [pageLoading, setPageLoading] = useState(true);
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // For Auth0 request/response
+  // Auth0
   const [request, response, promptAsync] = useAuthRequest(
     {
       clientId,
@@ -51,7 +56,7 @@ const HomePage: React.FC = () => {
     { authorizationEndpoint: `https://${domain}/authorize` }
   );
 
-  // Tab & Content states
+  // Tabs & Data
   const [activeTab, setActiveTab] = useState<'My News' | 'Trending'>('My News');
   const [preferences, setPreferences] = useState<string[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -59,78 +64,88 @@ const HomePage: React.FC = () => {
   const [isSeeAll, setIsSeeAll] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // This will store the logged-in username if available
-  const [username, setUsername] = useState<string | null>(null);
+  // Filter
+  const [filterType, setFilterType] = useState<'all' | 'tweet' | 'article'>('all');
 
-  // Context & Navigation
+  // User
+  const [username, setUsername] = useState<string | null>(null);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
+
+  // Context & Nav
   const { userToken, setUserToken } = useContext(UserContext);
   const router = useRouter();
   const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
-  // For controlling the floating bottom bar
-  const lastOffset = useRef(0);
-  const [showButton, setShowButton] = useState(true);
+  // For arrow-up button
+  const [scrolledFarDown, setScrolledFarDown] = useState(false);
 
-  // ------------------ AUTH0 login function ------------------
+  // References to FlatList
+  const flatListRef = useRef<FlatList<any> | null>(null);
+  const trendingFlatListRef = useRef<FlatList<any> | null>(null); // Reference for TrendingScreen FlatList
+
+  // Create Animated.Value for scroll position
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Interpolate scrollY to get header opacity
+  const headerOpacity = scrollY.interpolate({
+    inputRange: [0, 100], // Adjust the range as needed
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  // ------------------ Auth / Login ------------------
   const handleLogin = async () => {
     setLoadingLogin(true);
     setErrorMessage('');
-
     if (Platform.OS === 'web') {
-      // Web: redirect user directly to Auth0 login page
+      // On web, just open the Auth0 URL
       const authUrl = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
         redirectUri
       )}&response_type=code&scope=openid%20profile%20email&prompt=login`;
       window.location.href = authUrl;
     } else {
-      // Native (iOS/Android)
       try {
         if (request) {
           const result = await promptAsync();
-          if (result.type === 'success' && result.params && result.params.code) {
-            router.push({ pathname: '/loginStatus', params: { code: result.params.code } });
+          if (result.type === 'success' && result.params.code) {
+            router.push({ pathname: '/loginstatus', params: { code: result.params.code } });
           } else {
-            throw new Error('Authorization code not found in result');
+            throw new Error('Authorization code not found');
           }
         }
       } catch (error) {
-        console.error('Error during login process:', error);
+        console.error('Error during login:', error);
         setErrorMessage('Login failed');
       }
     }
-
     setLoadingLogin(false);
   };
-  // ----------------------------------------------------------
 
-  // Utility functions to format dates
-  const formatToUTCT = (isoDate: string): string => {
-    const date = new Date(isoDate);
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = date.getUTCFullYear();
-    return `${hours}:${minutes} ${day}-${month}-${year}`;
+  // ------------------ Data Helpers ------------------
+  const formatDateToDay = (dateString?: string) => {
+    if (!dateString) return '';
+    return new Date(dateString).toISOString().split('T')[0];
   };
 
-  const formatToUTCA = (isoDate: string): string => {
-    const date = new Date(isoDate);
-    const day = String(date.getUTCDate()).padStart(2, '0');
-    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-    const year = date.getUTCFullYear();
-    return `${day}-${month}-${year}`;
+  const fetchProfilePicture = async (uname: string) => {
+    try {
+      const response = await fetch(`${domaindynamo}/get-profile-picture?username=${uname}`);
+      const data = await response.json();
+      if (data.status === 'Success' && data.profile_picture) {
+        setProfilePictureUrl(data.profile_picture);
+      }
+    } catch (error) {
+      console.error('Error fetching profile picture:', error);
+    }
   };
 
-  // Fetch username from backend
   const fetchUsername = async () => {
     if (!userToken) {
-      // No token => treat as guest
       setUsername(null);
+      setProfilePictureUrl(null);
       fetchPreferences('Guest');
       return;
     }
-
     try {
       const response = await fetch(`${domaindynamo}/get-username`, {
         method: 'POST',
@@ -141,39 +156,40 @@ const HomePage: React.FC = () => {
       if (data.status === 'Success' && data.username) {
         setUsername(data.username);
         fetchPreferences(data.username);
+        fetchProfilePicture(data.username);
       } else {
         setUsername(null);
+        setProfilePictureUrl(null);
         setPreferences([]);
       }
     } catch (error) {
       console.error('Error fetching username:', error);
       setUsername(null);
+      setProfilePictureUrl(null);
       setPreferences([]);
     }
   };
 
-  // Fetch user preferences based on username
-  const fetchPreferences = async (username: string) => {
+  const fetchPreferences = async (uname: string) => {
     if (!userToken) {
-      // If not logged in, provide some default preferences
-      const fetchedPreferences = ['BREAKING NEWS', 'Football', 'Formula1', 'HEALTHY LIVING'];
-      setPreferences(fetchedPreferences);
-      setSelectedCategory(fetchedPreferences[0]);
-      fetchContent(fetchedPreferences[0]);
+      const defaultPrefs = ['BREAKING NEWS', 'Football', 'Formula1', 'HEALTHY LIVING'];
+      setPreferences(defaultPrefs);
+      setSelectedCategory(defaultPrefs[0]);
+      fetchContent(defaultPrefs[0]);
     } else {
       try {
         const response = await fetch(`${domaindynamo}/check-preferences`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
+          body: JSON.stringify({ username: uname }),
         });
         const data = await response.json();
         if (data.status === 'Success') {
-          const fetchedPreferences: string[] = data.data.map((item: any) => item.preference);
-          setPreferences(fetchedPreferences);
-          if (fetchedPreferences.length > 0) {
-            setSelectedCategory(fetchedPreferences[0]);
-            fetchContent(fetchedPreferences[0]);
+          const fetchedPrefs: string[] = data.data.map((item: any) => item.preference);
+          setPreferences(fetchedPrefs);
+          if (fetchedPrefs.length > 0) {
+            setSelectedCategory(fetchedPrefs[0]);
+            fetchContent(fetchedPrefs[0]);
           }
         } else {
           setPreferences([]);
@@ -185,7 +201,6 @@ const HomePage: React.FC = () => {
     }
   };
 
-  // Fetch content (tweets & articles) based on category
   const fetchContent = async (category: string) => {
     setIsLoading(true);
     setErrorMessage('');
@@ -193,7 +208,9 @@ const HomePage: React.FC = () => {
     try {
       const [articlesResponse, tweetsResponse] = await Promise.all([
         fetch(
-          isSeeAll ? `${domaindynamo}/get-allarticles` : `${domaindynamo}/get-articles`,
+          isSeeAll
+            ? `${domaindynamo}/get-allarticles`
+            : `${domaindynamo}/get-articles`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -201,7 +218,9 @@ const HomePage: React.FC = () => {
           }
         ),
         fetch(
-          isSeeAll ? `${domaindynamo}/get-alltweets` : `${domaindynamo}/get-tweets`,
+          isSeeAll
+            ? `${domaindynamo}/get-alltweets`
+            : `${domaindynamo}/get-tweets`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -214,46 +233,41 @@ const HomePage: React.FC = () => {
       const tweetsData = await tweetsResponse.json();
 
       if (articlesData.status === 'Articles found' || tweetsData.status === 'Tweets found') {
-        const tweets = tweetsData.data || [];
         const articles = articlesData.data || [];
+        const tweets = tweetsData.data || [];
 
-        let combinedContent: any[] = [];
-        if (tweets.length > 0 && articles.length > 0) {
-          // Combine & sort (70% tweets / 30% articles)
-          const totalItems = tweets.length + articles.length;
-          const desiredTweetsCount = Math.floor(totalItems * 0.7);
-          const desiredArticlesCount = Math.floor(totalItems * 0.3);
+        // Merge and group
+        const combined = [
+          ...tweets.map((t: any) => ({ type: 'tweet', dateTime: t.Created_At, ...t })),
+          ...articles.map((a: any) => ({ type: 'article', dateTime: a.date, ...a })),
+        ];
 
-          const selectedTweets = tweets.slice(0, desiredTweetsCount);
-          const selectedArticles = articles.slice(0, desiredArticlesCount);
-
-          combinedContent = [
-            ...selectedTweets.map((item: any) => ({ type: 'tweet', ...item })),
-            ...selectedArticles.map((item: any) => ({ type: 'article', ...item })),
-          ];
-          // Sort by date desc
-          combinedContent.sort(
-            (a, b) =>
-              new Date(b.date || b.Created_At).getTime() -
-              new Date(a.date || a.Created_At).getTime()
-          );
-        } else if (tweets.length > 0) {
-          // Only tweets
-          combinedContent = tweets.map((item: any) => ({ type: 'tweet', ...item }));
-          combinedContent.sort(
-            (a, b) => new Date(b.Created_At).getTime() - new Date(a.Created_At).getTime()
-          );
-        } else if (articles.length > 0) {
-          // Only articles
-          combinedContent = articles.map((item: any) => ({ type: 'article', ...item }));
-          combinedContent.sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-          );
+        // Group by day
+        const dayMap: Record<string, any[]> = {};
+        for (const item of combined) {
+          const day = formatDateToDay(item.dateTime);
+          if (!dayMap[day]) {
+            dayMap[day] = [];
+          }
+          dayMap[day].push(item);
         }
 
-        setArticlesAndTweets(combinedContent);
+        // Sort days
+        const sortedDays = Object.keys(dayMap).sort(
+          (a, b) => new Date(b).getTime() - new Date(a).getTime()
+        );
+
+        // Flatten
+        let finalContent: any[] = [];
+        for (const day of sortedDays) {
+          // Sort items within each day by newest first
+          dayMap[day].sort(
+            (a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime()
+          );
+          finalContent.push(...dayMap[day]);
+        }
+        setArticlesAndTweets(finalContent);
       } else {
-        // Neither articles nor tweets found
         setArticlesAndTweets([]);
       }
     } catch (error) {
@@ -262,18 +276,16 @@ const HomePage: React.FC = () => {
       setArticlesAndTweets([]);
     } finally {
       setIsLoading(false);
+      setPageLoading(false);
     }
   };
 
-  // Handle tapping a tweet
+  // ------------------ Press Handlers ------------------
   const handleTweetPress = async (item: any) => {
     if (!userToken) {
-      Platform.OS === 'web'
-        ? alert('Login to Access More Features!')
-        : Alert.alert('Error', 'Login to Access More Features!');
+      alertNotLoggedIn();
       return;
     }
-
     try {
       const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
         method: 'POST',
@@ -288,20 +300,16 @@ const HomePage: React.FC = () => {
         Alert.alert('Error', 'Failed to set tweet data');
       }
     } catch (error) {
-      console.error('Error setting tweet data:', error);
+      console.error(error);
       Alert.alert('Error', 'Unable to set tweet data');
     }
   };
 
-  // Handle tapping an article
   const handleArticlePress = async (item: any) => {
     if (!userToken) {
-      Platform.OS === 'web'
-        ? alert('Login to Access More Features!')
-        : Alert.alert('Error', 'Login to Access More Features!');
+      alertNotLoggedIn();
       return;
     }
-
     try {
       const response = await fetch(`${domaindynamo}/set-article-id`, {
         method: 'POST',
@@ -316,174 +324,345 @@ const HomePage: React.FC = () => {
         Alert.alert('Error', 'Failed to set article data');
       }
     } catch (error) {
-      console.error('Error setting article data:', error);
+      console.error(error);
       Alert.alert('Error', 'Unable to set article data');
     }
   };
 
-  // On mount or whenever userToken changes, fetch username
+  const alertNotLoggedIn = () => {
+    if (Platform.OS === 'web') {
+      alert('Login to Access More Features!');
+    } else {
+      Alert.alert('Error', 'Login to Access More Features!');
+    }
+  };
+
+  // ------------------ Lifecycle ------------------
   useEffect(() => {
     fetchUsername();
   }, [userToken]);
 
-  // Handle category selection
+  // ------------------ Category & Filter ------------------
   const handleCategorySelect = (category: string) => {
     setIsSeeAll(false);
     setSelectedCategory(category);
     fetchContent(category);
   };
 
-  // Handle "See All"
   const handleSeeAll = () => {
     setIsSeeAll(true);
     setSelectedCategory(null);
     fetchContent('all');
   };
 
-  // Render each item (TweetCard or ArticleCard)
-  const renderContentCard = ({ item }: { item: any }) => {
-    if (item.type === 'article') {
-      return <ArticleCard item={item} onPress={handleArticlePress} />;
-    } else if (item.type === 'tweet') {
-      return <TweetCard item={item} onPress={handleTweetPress} />;
-    }
-    return null;
+  const handleFilterSelect = (type: 'all' | 'tweet' | 'article') => {
+    setFilterType(type);
   };
 
-  // Bottom bar navigation
-  const handleHomePress = () => router.push('/');
-  const handleBookmarkPress = () => {
-    if (!userToken) {
-      Platform.OS === 'web'
-        ? alert('Login to Access More Features!')
-        : Alert.alert('Error', 'Login to Access More Features!');
-    } else {
-      router.push('/savedarticles');
-    }
-  };
-  const handleAddressBookPress = () => {
-    if (!userToken) {
-      Platform.OS === 'web'
-        ? alert('Login to Access More Features!')
-        : Alert.alert('Error', 'Login to Access More Features!');
-    } else {
-      router.push('/followingpage');
-    }
-  };
-  const handleSearchPress = () => {
-    if (!userToken) {
-      Platform.OS === 'web'
-        ? alert('Login to Access More Features!')
-        : Alert.alert('Error', 'Login to Access More Features!');
-    } else {
-      router.push('/searchpage');
-    }
+  // Returns the items that match the current filter
+  const getFilteredData = () => {
+    if (filterType === 'all') return articlesAndTweets;
+    return articlesAndTweets.filter((item) => item.type === filterType);
   };
 
-  // Show/hide floating button on scroll
+  // ------------------ Scroll Handling ------------------
   const handleScroll = (event: any) => {
     const currentOffset = event.nativeEvent.contentOffset.y;
-    if (currentOffset > lastOffset.current && currentOffset > 50) {
-      // Scrolling Down
-      if (showButton) setShowButton(false);
-    } else if (currentOffset < lastOffset.current) {
-      // Scrolling Up
-      if (!showButton) setShowButton(true);
+    // Show "arrow up" if user scrolls beyond 300px
+    if (currentOffset > 300 && !scrolledFarDown) {
+      setScrolledFarDown(true);
+    } else if (currentOffset < 300 && scrolledFarDown) {
+      setScrolledFarDown(false);
     }
-    lastOffset.current = currentOffset;
   };
 
-  return (
-    <View style={styles.container}>
-      {/*
-        HeaderTabs now receives:
-        - activeTab & setActiveTab
-        - username => if null => shows Login button, else shows username + dropdown
-        - onLoginPress => calls handleLogin()
-        - onSettingsPress => push to settings
-      */}
-      <HeaderTabs
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        username={username}
-        onLoginPress={handleLogin}
-        onSettingsPress={() => router.push('/settings')}
-      />
+  const handleScrollToTop = () => {
+    console.log("handleScrollToTop called");
+    console.log("activeTab:", activeTab);
 
-      {/* Show error if Auth0 login fails */}
-      {errorMessage ? (
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+    if (activeTab === 'My News' && flatListRef.current) {
+      flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    } else if (activeTab === 'Trending' && trendingFlatListRef.current) {
+      trendingFlatListRef.current.scrollToOffset({ offset: 0, animated: true });
+    }
+  };
+
+  // ------------------ Renders ------------------
+  const renderContentCard = ({ item }: { item: any }) => {
+    if (item.type === 'tweet') {
+      return <TweetCard item={item} onPress={() => handleTweetPress(item)} />;
+    }
+    return <ArticleCard item={item} onPress={() => handleArticlePress(item)} />;
+  };
+
+  // ------------------ Header Rendering ------------------
+  const renderHeader = () => (
+    <HeaderTabs
+      activeTab={activeTab}
+      onTabPress={(tab) => {
+        if (tab === 'Trending') {
+          setActiveTab('Trending');
+        } else {
+          setActiveTab('My News');
+        }
+      }}
+      username={username}
+      profilePictureUrl={profilePictureUrl || undefined}
+      onSettingsPress={() => router.push('/settings')}
+      onLoginPress={handleLogin}
+      headerOpacity={headerOpacity} // Pass the interpolated opacity
+    />
+  );
+
+  // ------------------ Bottom Bar ------------------
+  const renderBottomBar = () => (
+    <ChronicallyButton
+      onHomePress={() => router.push('/')}
+      onBookmarkPress={() => {
+        if (!userToken) {
+          alertNotLoggedIn();
+        } else {
+          router.push('/savedarticles');
+        }
+      }}
+      onArrowPress={handleScrollToTop}
+      arrowDisabled={!scrolledFarDown}
+      onFollowingPress={() => {
+        if (!userToken) {
+          alertNotLoggedIn();
+        } else {
+          router.push('/followingpage');
+        }
+      }}
+      onSearchPress={() => {
+        if (!userToken) {
+          alertNotLoggedIn();
+        } else {
+          router.push('/searchpage');
+        }
+      }}
+      scrolledFarDown={scrolledFarDown}
+    />
+  );
+
+  // ------------------ List Header ------------------
+  const renderListHeader = () => (
+    <View>
+      {/* Header */}
+      {renderHeader()}
+
+      {/* Categories and Filter (only for 'My News') */}
+      {activeTab === 'My News' && (
+        <View style={styles.categoryFilterWrapper}>
+          {/* SCROLLABLE CATEGORIES */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginVertical: 5 }}
+            contentContainerStyle={styles.categoriesContainer}
+          >
+            {preferences.map((cat) => (
+              <TouchableOpacity
+                key={cat}
+                style={[
+                  styles.categoryButton,
+                  selectedCategory === cat && styles.categoryButtonActive,
+                ]}
+                onPress={() => handleCategorySelect(cat)}
+              >
+                <Text
+                  style={[
+                    styles.categoryButtonText,
+                    selectedCategory === cat && styles.categoryButtonTextActive,
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            {/* "See All" button */}
+            <TouchableOpacity
+              style={[styles.categoryButton, isSeeAll && styles.categoryButtonActive]}
+              onPress={handleSeeAll}
+            >
+              <Text
+                style={[
+                  styles.categoryButtonText,
+                  isSeeAll && styles.categoryButtonTextActive,
+                ]}
+              >
+                See All
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+
+          {/* FILTER ROW */}
+          <View style={styles.filterRow}>
+            <Text style={styles.filterLabel}>Filter by:</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ flexDirection: 'row', alignItems: 'center' }}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  filterType === 'all' && styles.filterButtonActive,
+                ]}
+                onPress={() => handleFilterSelect('all')}
+              >
+                <Text style={styles.filterButtonText}>All</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  filterType === 'tweet' && styles.filterButtonActive,
+                ]}
+                onPress={() => handleFilterSelect('tweet')}
+              >
+                <Text style={styles.filterButtonText}>Tweets</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.filterButton,
+                  filterType === 'article' && styles.filterButtonActive,
+                ]}
+                onPress={() => handleFilterSelect('article')}
+              >
+                <Text style={styles.filterButtonText}>Articles</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
         </View>
-      ) : null}
-
-      {/* If "Trending" tab is active, show TrendingScreen; else show My News */}
-      {activeTab === 'Trending' ? (
-        <TrendingScreen />
-      ) : (
-        <>
-          {/* Category Filter for "My News" */}
-          <CategoryFilter
-            categories={preferences}
-            selectedCategory={selectedCategory}
-            onCategorySelect={handleCategorySelect}
-            onSeeAll={handleSeeAll}
-            isSeeAll={isSeeAll}
-          />
-
-          {isLoading ? (
-            <View style={styles.loaderContainer}>
-              <ActivityIndicator size="large" color="#6C63FF" />
-            </View>
-          ) : errorMessage ? (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={articlesAndTweets}
-              renderItem={renderContentCard}
-              keyExtractor={(item, index) => `${item.type}-${index}`}
-              contentContainerStyle={styles.contentContainer}
-              onScroll={handleScroll}
-              scrollEventThrottle={16}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>No content available.</Text>
-                </View>
-              }
-            />
-          )}
-
-          {/* Bottom Bar (home, bookmark, address-book, search) */}
-          <CustomButtonWithBar
-            isVisible={showButton}
-            barButtons={[
-              { iconName: 'home', onPress: handleHomePress },
-              { iconName: 'bookmark', onPress: handleBookmarkPress },
-              { iconName: 'address-book', onPress: handleAddressBookPress },
-              { iconName: 'search', onPress: handleSearchPress },
-            ]}
-            onMainButtonPress={() => {
-              console.log('Main floating button pressed!');
-            }}
-          />
-        </>
       )}
     </View>
   );
-};
 
+// ------------------ Main Render ------------------
+if (pageLoading) {
+  return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#6C63FF" />
+    </View>
+  );
+}
+
+return (
+  <View style={styles.container}>
+    {/* Content Area */}
+    {activeTab === 'Trending' ? (
+      <TrendingScreen flatListRef={trendingFlatListRef} />
+    ) : (
+      <FlatList
+        ref={flatListRef}
+        data={getFilteredData()}
+        renderItem={renderContentCard}
+        keyExtractor={(item, index) => `${item.type}-${index}`}
+        ListHeaderComponent={renderListHeader}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          {
+            useNativeDriver: false,
+            listener: handleScroll,
+          }
+        )}
+        scrollEventThrottle={16}
+        contentContainerStyle={styles.listContentContainer}
+        ListEmptyComponent={
+          isLoading ? (
+            <View style={styles.loaderContainer}>
+              <ActivityIndicator size="large" color="#6C63FF" />
+            </View>
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No content available.</Text>
+            </View>
+          )
+        }
+      />
+    )}
+
+    {/* Bottom Bar - Always Rendered */}
+    {activeTab === 'My News' && renderBottomBar()}
+  </View>
+);
+};
 export default HomePage;
 
+// ------------------------------------------------------
+// STYLES
+// ------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F4F7FA',
+    position: 'relative', // Ensure that absolutely positioned children are relative to this container
   },
-  contentContainer: {
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: '#F4F7FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  categoryFilterWrapper: {
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E2E2',
+    paddingVertical: 6,
+    paddingHorizontal: 7,
+  },
+  categoriesContainer: {
+    alignItems: 'center',
+    // Optional: Add paddingHorizontal if needed
+  },
+  categoryButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 5,
+    marginRight: 4,
+    marginVertical: 4,
+  },
+  categoryButtonActive: {
+    backgroundColor: '#6C63FF',
+  },
+  categoryButtonText: {
+    color: '#333',
+    fontSize: 14,
+  },
+  categoryButtonTextActive: {
+    color: '#FFF',
+  },
+  filterRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterLabel: {
+    color: '#333',
+    fontSize: 14,
+    marginRight: 8,
+  },
+  filterButton: {
+    marginRight: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: '#F0F0F0',
+    borderRadius: 5,
+  },
+  filterButtonActive: {
+    backgroundColor: '#6C63FF',
+  },
+  filterButtonText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  listContentContainer: {
     paddingHorizontal: 15,
-    paddingBottom: 100, // space for the floating button
+    paddingBottom: 80, // So bottom bar doesn't overlap content
   },
   loaderContainer: {
     flex: 1,
@@ -494,16 +673,16 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: 'center',
   },
-  errorText: {
+  errorMessage: {
     color: '#FF0000',
     fontSize: 16,
   },
   emptyContainer: {
-    padding: 20,
+    padding: 10,
     alignItems: 'center',
   },
   emptyText: {
-    color: '#555555',
+    color: '#555',
     fontSize: 16,
   },
 });

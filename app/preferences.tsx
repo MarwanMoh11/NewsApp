@@ -33,13 +33,13 @@ export default function PreferencesScreen() {
   const { userToken } = useContext(UserContext);
 
   const industriesByCategory: Record<string, string[]> = {
-    "News": ['BREAKING NEWS', 'WORLDPOST', 'WORLD NEWS', 'POLITICS', 'U.S. NEWS'],
-    "Health & Wellness": ['WELLNESS', 'HEALTHY LIVING', 'HEALTH'],
+    "News": ['BREAKING NEWS', 'POLITICS', 'Top'],
+    "Health & Wellness": ['HEALTH', 'Environment', 'Food'],
     "Sports": ['Football', 'Formula1', 'SPORTS'],
-    "Technology & Gaming": ['TECH', 'Gaming'],
-    "Lifestyle": ['STYLE & BEAUTY', 'Business', 'Travel', 'HOME & LIVING', 'FOOD & DRINK', 'Health'],
-    "Arts & Entertainment": ['Entertainment', 'CULTURE & ARTS', 'COMEDY', 'ARTS'],
-    "Other": ['MONEY', 'Science', 'PARENTING', 'CRIME', 'DIVORCE', 'WOMEN'],
+    "Technology & Gaming": ['Technology', 'Gaming'],
+    "Lifestyle": ['Business', 'Travel', 'Health', 'Education', 'Lifestyle', 'Tourism', 'World'],
+    "Arts & Entertainment": ['Entertainment'],
+    "Other": ['Science', 'CRIME','Domestic', 'Other'],
   };
 
   useEffect(() => {

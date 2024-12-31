@@ -21,12 +21,10 @@ const LoginStatus: React.FC = () => {
     let error: string | null = null;
 
     if (Platform.OS === 'web') {
-      // On web, get the code and error from the URL search params
       const urlParams = new URLSearchParams(window.location.search);
       code = urlParams.get('code');
       error = urlParams.get('error');
     } else {
-      // On native, get them from local search params (passed via router.push)
       code = nativeCode ? String(nativeCode) : null;
       error = nativeError ? String(nativeError) : null;
     }
@@ -63,14 +61,21 @@ const LoginStatus: React.FC = () => {
   };
 
   const handleUserRegistration = async (user: any) => {
-    const { sub: token, nickname: Nickname, email: Email } = user;
+    const { sub: token, nickname: Nickname, email: Email, name: FullName, picture: ProfilePicture } = user;
+    console.log("Auth0 object: ", user);
 
     try {
-      // Check if user is registered
+      // Register or check user
       const checkResponse = await fetch(`${domaindynamo}/sign-up`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_token: token, nickname: Nickname, email: Email }),
+        body: JSON.stringify({
+          auth_token: token,
+          nickname: Nickname,
+          email: Email,
+          full_name: FullName,
+          profile_picture: ProfilePicture,
+        }),
       });
       const checkData = await checkResponse.json();
 
@@ -98,7 +103,6 @@ const LoginStatus: React.FC = () => {
         const activationstatusData = await activationstatus.json();
 
         if (activationstatusData.message === 'Account is deactivated') {
-          // Ask to reactivate
           if (Platform.OS === 'web') {
             const userConfirmed = window.confirm(
               'Account Reactivation\n\nYour account is currently deactivated. Would you like to reactivate it?'
@@ -136,7 +140,6 @@ const LoginStatus: React.FC = () => {
   const exchangeToken = async (authCode: string) => {
     const tokenEndpoint = `https://${domain}/oauth/token`;
 
-    // Use makeRedirectUri() to ensure a valid redirect URI on all platforms
     const redirectUri = Platform.OS === 'web'
       ? makeRedirectUri({ path: 'loginStatus', useProxy: false })
       : makeRedirectUri({ path: 'loginStatus' });

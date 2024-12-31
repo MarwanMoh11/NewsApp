@@ -1,6 +1,14 @@
 // components/ArticleCard.tsx
-import React from 'react';
-import { TouchableOpacity, Image, Text, StyleSheet, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  TouchableOpacity,
+  Image,
+  Text,
+  StyleSheet,
+  View,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
 
 interface ArticleCardProps {
   item: any;
@@ -8,9 +16,80 @@ interface ArticleCardProps {
 }
 
 const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [hasError, setHasError] = useState<boolean>(false);
+
+  const screenWidth = Dimensions.get('window').width;
+  const cardWidth = screenWidth * 0.8; // 80% of screen width
+  const MAX_IMAGE_HEIGHT = 300;        // Maximum height for the image
+
+  // If there's an image URL, attempt to get its dimensions to compute aspect ratio
+  useEffect(() => {
+    if (item.image_url) {
+      Image.getSize(
+        item.image_url,
+        (width, height) => {
+          // Avoid divide by zero
+          if (height !== 0) {
+            const ratio = width / height;
+            const calculatedHeight = cardWidth / ratio;
+            // If the calculated height is bigger than our max, adjust the ratio
+            if (calculatedHeight > MAX_IMAGE_HEIGHT) {
+              setAspectRatio(cardWidth / MAX_IMAGE_HEIGHT);
+            } else {
+              setAspectRatio(ratio);
+            }
+          }
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('Failed to get image size:', error);
+          setAspectRatio(16 / 9); // Fallback aspect ratio
+          setHasError(true);
+          setIsLoading(false);
+        }
+      );
+    } else {
+      setIsLoading(false);
+    }
+  }, [item.image_url, cardWidth]);
+
   return (
     <TouchableOpacity style={styles.articleCard} onPress={() => onPress(item)}>
-      <Image source={{ uri: item.Image_URL }} style={styles.articleImage} />
+      {/* Display image only if image_url exists */}
+      {item.image_url && !hasError && (
+        <View style={styles.imageContainer}>
+          {/* Show loading spinner until image size is determined or an error occurs */}
+          {isLoading && (
+            <ActivityIndicator
+              style={styles.loadingIndicator}
+              size="small"
+              color="#6C63FF"
+            />
+          )}
+          {
+            <Image
+              source={{ uri: item.image_url }}
+              style={[
+                styles.articleImage,
+                {
+                  aspectRatio: aspectRatio,
+                  maxHeight: MAX_IMAGE_HEIGHT,
+                },
+              ]}
+              resizeMode="contain" // Ensure the entire image is visible without cropping
+              onError={(e) => {
+                console.error('Failed to load image:', e.nativeEvent.error);
+                setHasError(true);
+                setIsLoading(false);
+              }}
+              accessibilityLabel="Article image"
+            />
+          }
+        </View>
+      )}
+
       <View style={styles.articleContent}>
         <Text style={styles.articleTitle}>{item.headline}</Text>
         <Text style={styles.articleAuthor}>{item.authors}</Text>
@@ -20,8 +99,9 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
   );
 };
 
-// Utility function to format UTC date
-const formatToUTCA = (isoDate: string) => {
+// Utility function to format UTC date (DD-MM-YYYY)
+const formatToUTCA = (isoDate: string): string => {
+  if (!isoDate) return '';
   const date = new Date(isoDate);
   const day = String(date.getUTCDate()).padStart(2, '0');
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -40,7 +120,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     overflow: 'hidden',
-    width: '90%', // 90% width for better visibility
+    width: '90%',
     alignSelf: 'center',
   },
   imageContainer: {

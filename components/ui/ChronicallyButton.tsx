@@ -1,143 +1,94 @@
-// components/CustomButtonWithBar.tsx
+// ------------------------------------------------------
+// ChronicallyButton.tsx
+// ------------------------------------------------------
+import React from 'react';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import Icon from 'react-native-vector-icons/Ionicons';
 
-import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-  Animated,
-  Dimensions,
-} from 'react-native';
-import { FontAwesome } from '@expo/vector-icons';
-
-interface BarButton {
-  iconName: keyof typeof FontAwesome.glyphMap; // Ensures only valid FontAwesome icons
-  onPress: () => void;
+interface ChronicallyButtonProps {
+  onHomePress: () => void;
+  onBookmarkPress: () => void;
+  onArrowPress: () => void;       // Scroll to top
+  arrowDisabled: boolean;
+  onFollowingPress: () => void;
+  onSearchPress: () => void;
+  scrolledFarDown: boolean;
 }
 
-interface CustomButtonWithBarProps {
-  onMainButtonPress?: () => void;
-  barButtons: BarButton[];
-  isVisible: boolean; // Control visibility from parent
-  buttonSize?: number;
-  barHeight?: number;
-  barBackgroundColor?: string;
-}
-
-const CustomButtonWithBar: React.FC<CustomButtonWithBarProps> = ({
-  onMainButtonPress,
-  barButtons,
-  isVisible,
-  buttonSize = 80,
-  barHeight = 60,
-  barBackgroundColor = '#F7B8D2',
+const ChronicallyButton: React.FC<ChronicallyButtonProps> = ({
+  onHomePress,
+  onBookmarkPress,
+  onArrowPress,
+  arrowDisabled,
+  onFollowingPress,
+  onSearchPress,
+  scrolledFarDown,
 }) => {
-  // Animated values for opacity and position
-  const buttonOpacity = useRef(new Animated.Value(1)).current;
-  const barTranslateY = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (isVisible) {
-      // Show the button and bar with animation
-      Animated.parallel([
-        Animated.timing(buttonOpacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(barTranslateY, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Hide the button and bar with animation
-      Animated.parallel([
-        Animated.timing(buttonOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.timing(barTranslateY, {
-          toValue: 100, // Moves the bar out of view
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [isVisible, buttonOpacity, barTranslateY]);
-
-  const handleMainButtonPress = () => {
-    if (onMainButtonPress) {
-      onMainButtonPress();
-    }
-    // Optionally, toggle the bar visibility here if needed
-  };
+  // Change arrow color if scrolled far
+  const arrowColor = scrolledFarDown ? '#6C63FF' : '#999';
 
   return (
-    <View style={styles.container}>
-      {/* Bar with additional buttons */}
-      <Animated.View
-        style={[
-          styles.barContainer,
-          {
-            height: barHeight,
-            backgroundColor: barBackgroundColor,
-            transform: [{ translateY: barTranslateY }],
-          },
-        ]}
-      >
-        {barButtons.map((button, index) => (
-          <TouchableOpacity key={index} onPress={button.onPress} style={styles.barButton}>
-            <FontAwesome name={button.iconName} size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        ))}
-      </Animated.View>
+    <View style={styles.bottomBarContainer}>
+      {/* Home */}
+      <TouchableOpacity style={styles.bottomBarButton} onPress={onHomePress}>
+        <Icon name="home-outline" size={22} color="#333" />
+      </TouchableOpacity>
+
+      {/* Bookmark */}
+      <TouchableOpacity style={styles.bottomBarButton} onPress={onBookmarkPress}>
+        <Icon name="bookmark-outline" size={22} color="#333" />
+      </TouchableOpacity>
+
+      {/* Arrow Up - Conditionally Rendered */}
+      {scrolledFarDown && (
+        <TouchableOpacity
+          style={styles.bottomBarButton}
+          onPress={onArrowPress}
+          disabled={arrowDisabled}
+        >
+          <Icon name="arrow-up" size={24} color={arrowColor} />
+        </TouchableOpacity>
+      )}
+
+      {/* Following */}
+      <TouchableOpacity style={styles.bottomBarButton} onPress={onFollowingPress}>
+        <Icon name="people-outline" size={22} color="#333" />
+      </TouchableOpacity>
+
+      {/* Search */}
+      <TouchableOpacity style={styles.bottomBarButton} onPress={onSearchPress}>
+        <Icon name="search-outline" size={22} color="#333" />
+      </TouchableOpacity>
     </View>
   );
 };
 
+export default ChronicallyButton;
+
 const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 30,
-    width: '100%',
-    alignItems: 'center',
-    zIndex: 10, // Ensure the button is above other components
-  },
-  barContainer: {
+  bottomBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    width: '90%',
-    paddingHorizontal: 20,
-    borderRadius: 30,
-    marginBottom: 10,
-    elevation: 5, // For Android shadow
-    shadowColor: '#000', // For iOS shadow
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
+    paddingVertical: 10,
+    backgroundColor: '#FFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E2E2',
+    // Position absolutely to pin to bottom
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    // Shadow for iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    // Elevation for Android
+    elevation: 2,
+    zIndex: 10, // Ensure it appears above other components
   },
-  barButton: {
-    padding: 10,
-  },
-  mainButton: {
-    backgroundColor: '#8A7FDC',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5, // For Android shadow
-    shadowColor: '#000', // For iOS shadow
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  mainButtonInner: {
-    justifyContent: 'center',
-    alignItems: 'center',
+  bottomBarButton: {
+    padding: 8,
   },
 });
-
-export default React.memo(CustomButtonWithBar);
