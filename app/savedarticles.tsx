@@ -1,5 +1,6 @@
+// ------------------------------------------------------
 // pages/SavedArticles.tsx
-
+// ------------------------------------------------------
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   View,
@@ -9,25 +10,35 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { UserContext } from '../app/UserContext';
+import { UserContext } from '../app/UserContext'; // Adjust the import path as necessary
 import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
 import BackButton from '../components/ui/BackButton';
+import TweetModal from './tweetpage'; // Import the TweetModal component
+import ArticleModal from './articlepage'; // Import the ArticleModal component
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 const SavedArticles: React.FC = () => {
+  // ------------------ States ------------------
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [articlesAndTweets, setArticlesAndTweets] = useState<any[]>([]);
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState<string>('');
   const router = useRouter();
-  const { userToken, setUserToken } = useContext(UserContext);
+  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext); // Consume isDarkTheme
 
   const lastOffset = useRef(0);
   const [showButton, setShowButton] = useState(true); // Controls button visibility
+
+  // Modal states
+  const [tweetModalVisible, setTweetModalVisible] = useState<boolean>(false);
+  const [selectedTweetLink, setSelectedTweetLink] = useState<string | null>(null);
+  const [articleModalVisible, setArticleModalVisible] = useState<boolean>(false);
+  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
 
   const formatToUTCA = (isoDate: string): string => {
     const date = new Date(isoDate);
@@ -152,76 +163,34 @@ const SavedArticles: React.FC = () => {
     }
   };
 
-  const handleContentPressLive = async (item: any) => {
-    if (!userToken) {
-      Alert.alert('Error', 'You must be logged in to view tweets.');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, tweet: item }),
-      });
-
-      console.log('Response Status:', response.status);
-      const data = await response.json();
-      console.log('Response Data:', data);
-
-      if (data.status === 'Success') {
-        setUserToken(data.token);
-        router.push('/tweetpage');
-      } else {
-        Alert.alert('Error', 'Failed to set tweet data');
-      }
-    } catch (error) {
-      console.error('Error setting tweet data:', error);
-      Alert.alert('Error', 'Unable to set tweet data');
-    }
-  };
-
-  const handleContentPress = async (item: any) => {
+  // Remove handleContentPressLive as it's redundant
+  // Modify handleContentPress to open the modal for tweets and articles
+  const handleContentPress = (item: any) => {
     if (item.type === 'tweet') {
       if (!userToken) {
         Alert.alert('Error', 'You must be logged in to view tweets.');
         return;
       }
 
-      try {
-        const response = await fetch(`${domaindynamo}/set-tweet-link`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ link: item.id }),
-        });
-
-        const data = await response.json();
-        if (data.status === 'Success') {
-          router.push('/tweetpage');
-        } else {
-          Alert.alert('Error', 'Failed to set tweet link');
-        }
-      } catch (error) {
-        console.error('Error setting tweet link:', error);
-        Alert.alert('Error', 'Unable to set tweet link');
+      // Open TweetModal with the tweet link
+      setSelectedTweetLink(item.content_data?.Tweet_Link || null);
+      if (item.content_data?.Tweet_Link) {
+        setTweetModalVisible(true);
+      } else {
+        Alert.alert('Error', 'Invalid tweet link.');
       }
     } else if (item.type === 'article') {
-      try {
-        const response = await fetch(`${domaindynamo}/set-article-id`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: userToken, id: item.id }),
-        });
+      if (!userToken) {
+        Alert.alert('Error', 'You must be logged in to view articles.');
+        return;
+      }
 
-        const data = await response.json();
-        if (data.status === 'Success') {
-          router.push('/articlepage');
-        } else {
-          Alert.alert('Error', 'Failed to set article ID');
-        }
-      } catch (error) {
-        console.error('Error setting article ID:', error);
-        Alert.alert('Error', 'Unable to set article ID');
+      // Open ArticleModal with the article ID
+      setSelectedArticleId(item.content_data?.id || null);
+      if (item.content_data?.id) {
+        setArticleModalVisible(true);
+      } else {
+        Alert.alert('Error', 'Invalid article ID.');
       }
     }
   };
@@ -239,7 +208,7 @@ const SavedArticles: React.FC = () => {
       return (
         <TweetCard
           item={item.content_data}
-          onPress={() => handleContentPressLive(item.content_data)}
+          onPress={() => handleContentPress(item)} // Pass the item to handleContentPress
         />
       );
     }
@@ -261,27 +230,27 @@ const SavedArticles: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={styles.centered}>
+      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
         <ActivityIndicator size="large" color="#6C63FF" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={[styles.loadingText, { color: isDarkTheme ? '#D1D5DB' : '#888' }]}>Loading...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>Error: {error}</Text>
+      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
+        <Text style={[styles.errorText, { color: isDarkTheme ? '#F87171' : 'red' }]}>Error: {error}</Text>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
       {/* Header with Back Button and "Saved Articles" Title */}
-      <View style={styles.header}>
+      <View style={[styles.header, { borderBottomColor: isDarkTheme ? '#374151' : '#E0E0E0' }]}>
         <BackButton />
-        <Text style={styles.headerTitle}>Saved Articles</Text>
+        <Text style={[styles.headerTitle, { color: isDarkTheme ? '#F3F4F6' : '#333333' }]}>Saved Articles</Text>
       </View>
 
       <FlatList
@@ -293,23 +262,41 @@ const SavedArticles: React.FC = () => {
         scrollEventThrottle={16}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No saved articles</Text>
+            <Text style={[styles.emptyText, { color: isDarkTheme ? '#D1D5DB' : '#555555' }]}>
+              No saved articles
+            </Text>
           </View>
         }
+        // Adjust FlatList background based on theme
+        style={{ backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }}
+      />
+
+      {/* Render the ArticleModal */}
+      <ArticleModal
+        visible={articleModalVisible}
+        onClose={() => setArticleModalVisible(false)}
+        articleId={selectedArticleId}
+      />
+
+      {/* Render the TweetModal */}
+      <TweetModal
+        visible={tweetModalVisible}
+        onClose={() => setTweetModalVisible(false)}
+        tweetLink={selectedTweetLink}
       />
     </View>
   );
 };
 
+export default SavedArticles;
+
+// ------------------------------------------------------
+// STYLES
+// ------------------------------------------------------
 const styles = StyleSheet.create({
-  logoImage: {
-    width: 300,
-    height: 100,
-    alignSelf: 'center',
-  },
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    position: 'relative', // Ensure that absolutely positioned children are relative to this container
   },
   centered: {
     flex: 1,
@@ -319,11 +306,9 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#888',
   },
   errorText: {
     fontSize: 16,
-    color: 'red',
   },
   header: {
     flexDirection: 'row',
@@ -332,28 +317,23 @@ const styles = StyleSheet.create({
     paddingTop: 60, // Adjust if you have a safe area or need more spacing
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
   },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#333333',
   },
   listContainer: {
     paddingVertical: 20,
+    paddingHorizontal: 15,
   },
   emptyContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 50,
   },
   emptyText: {
     fontSize: 16,
-    color: '#888',
   },
 });
-
-export default SavedArticles;

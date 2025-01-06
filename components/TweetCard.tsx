@@ -1,6 +1,7 @@
+// ------------------------------------------------------
 // components/TweetCard.tsx
-
-import React, { useState, useEffect } from 'react';
+// ------------------------------------------------------
+import React, { useState, useEffect, useContext } from 'react';
 import {
   TouchableOpacity,
   Image,
@@ -10,6 +11,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
+import { UserContext } from '../app/UserContext'; // Adjust the path if necessary
 
 interface TweetCardProps {
   item: any;
@@ -17,6 +19,8 @@ interface TweetCardProps {
 }
 
 const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
+  const { isDarkTheme } = useContext(UserContext); // Consume theme from context
+
   const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
@@ -54,15 +58,21 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
   }, [item.Media_URL, cardWidth]);
 
   return (
-    <TouchableOpacity style={styles.tweetCard} onPress={() => onPress(item)}>
+    <TouchableOpacity
+      style={isDarkTheme ? styles.tweetCardDark : styles.tweetCardLight}
+      onPress={() => onPress(item)}
+      accessible={true}
+      accessibilityRole="button"
+      accessibilityLabel="Tweet card"
+    >
       {/* Display image if Media_URL exists */}
       {item.Media_URL ? (
-        <View style={styles.imageContainer}>
+        <View style={isDarkTheme ? styles.imageContainerDark : styles.imageContainerLight}>
           {isLoading && (
             <ActivityIndicator
               style={styles.loadingIndicator}
               size="small"
-              color="#6C63FF"
+              color={isDarkTheme ? '#BB9CED' : '#6C63FF'}
             />
           )}
           {!hasError ? (
@@ -88,19 +98,30 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
             <View
               style={[
                 styles.tweetImage,
-                { aspectRatio: aspectRatio, justifyContent: 'center', alignItems: 'center' },
+                {
+                  aspectRatio: aspectRatio,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  backgroundColor: isDarkTheme ? '#374151' : '#F0F0F0',
+                },
               ]}
             >
-              <Text style={styles.errorText}>Image Failed to Load</Text>
+              <Text style={isDarkTheme ? styles.errorTextDark : styles.errorTextLight}>
+                Image Failed to Load
+              </Text>
             </View>
           )}
         </View>
       ) : null}
 
       <View style={styles.tweetContent}>
-        <Text style={styles.tweetUsername}>{item.Username}</Text>
-        <Text style={styles.tweetDate}>{formatToUTCT(item.Created_At)}</Text>
-        <Text style={styles.tweetText} numberOfLines={3} ellipsizeMode="tail">
+        <Text style={isDarkTheme ? styles.tweetUsernameDark : styles.tweetUsernameLight}>
+          {item.Username}
+        </Text>
+        <Text style={isDarkTheme ? styles.tweetDateDark : styles.tweetDateLight}>
+          {formatToUTCT(item.Created_At)}
+        </Text>
+        <Text style={isDarkTheme ? styles.tweetTextDark : styles.tweetTextLight} numberOfLines={3} ellipsizeMode="tail">
           {item.Tweet}
         </Text>
       </View>
@@ -120,8 +141,9 @@ const formatToUTCT = (isoDate: string): string => {
 };
 
 const styles = StyleSheet.create({
-  tweetCard: {
-    backgroundColor: '#FFFFFF', // Temporary background color for visibility
+  // Light Theme Styles
+  tweetCardLight: {
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -130,16 +152,40 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     overflow: 'hidden',
-    width: '90%', // 90% width for better visibility
+    width: '90%',
     alignSelf: 'center',
   },
-  imageContainer: {
+  // Dark Theme Styles
+  tweetCardDark: {
+    backgroundColor: '#374151', // Dark gray background
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    overflow: 'hidden',
+    width: '90%',
+    alignSelf: 'center',
+  },
+  // Light Theme Image Container
+  imageContainerLight: {
     position: 'relative',
     width: '100%',
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 12,
-    backgroundColor: '#F0F0F0', // Fallback background color
+    backgroundColor: '#F0F0F0', // Light background
+  },
+  // Dark Theme Image Container
+  imageContainerDark: {
+    position: 'relative',
+    width: '100%',
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 12,
+    backgroundColor: '#4B5563', // Dark background
   },
   loadingIndicator: {
     position: 'absolute',
@@ -152,28 +198,49 @@ const styles = StyleSheet.create({
     width: '100%',
     // height is determined by aspectRatio and maxHeight
   },
-  errorText: {
+  errorTextLight: {
     color: '#AA0000',
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  errorTextDark: {
+    color: '#FF6B6B',
     textAlign: 'center',
     fontSize: 16,
   },
   tweetContent: {
     // Additional styling for content if needed
   },
-  tweetUsername: {
+  tweetUsernameLight: {
     color: '#6C63FF',
     fontSize: 18,
     marginBottom: 4,
     fontWeight: 'bold',
   },
-  tweetDate: {
+  tweetUsernameDark: {
+    color: '#BB9CED',
+    fontSize: 18,
+    marginBottom: 4,
+    fontWeight: 'bold',
+  },
+  tweetDateLight: {
     fontSize: 14,
     color: '#666666',
     marginBottom: 8,
   },
-  tweetText: {
+  tweetDateDark: {
+    fontSize: 14,
+    color: '#D1D5DB',
+    marginBottom: 8,
+  },
+  tweetTextLight: {
     fontSize: 14,
     color: '#333333',
+    lineHeight: 20,
+  },
+  tweetTextDark: {
+    fontSize: 14,
+    color: '#F3F4F6',
     lineHeight: 20,
   },
 });

@@ -3,11 +3,15 @@ import React, { createContext, useState, useEffect, ReactNode } from 'react';
 interface UserContextType {
   userToken: string | null;
   setUserToken: (token: string | null) => void;
+  isDarkTheme: boolean;
+  toggleTheme: () => void;
 }
 
 export const UserContext = createContext<UserContextType>({
   userToken: null,
   setUserToken: () => {},
+  isDarkTheme: false,
+  toggleTheme: () => {},
 });
 
 interface UserProviderProps {
@@ -16,8 +20,9 @@ interface UserProviderProps {
 
 export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
   const [userToken, setUserTokenState] = useState<string | null>(null);
+  const [isDarkTheme, setIsDarkTheme] = useState<boolean>(false);
 
-  // Load token from localStorage on initial render (web only)
+  // Load userToken from localStorage on initial render
   useEffect(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
       const storedToken = window.localStorage.getItem('userToken');
@@ -27,7 +32,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   }, []);
 
-  // Whenever userToken changes, save it to localStorage (web only)
+  // Save userToken to localStorage whenever it changes
   useEffect(() => {
     if (typeof window !== 'undefined' && window.localStorage) {
       if (userToken) {
@@ -38,12 +43,37 @@ export const UserProvider: React.FC<UserProviderProps> = ({ children }) => {
     }
   }, [userToken]);
 
+  // Load theme preference from localStorage on initial render
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const storedTheme = window.localStorage.getItem('isDarkTheme');
+      if (storedTheme) {
+        setIsDarkTheme(storedTheme === 'true');
+      }
+    }
+  }, []);
+
+  // Save theme preference to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('isDarkTheme', isDarkTheme.toString());
+    }
+
+
+  }, [isDarkTheme]);
+
   const setUserToken = (token: string | null) => {
     setUserTokenState(token);
   };
 
+  const toggleTheme = () => {
+    setIsDarkTheme((prevTheme) => !prevTheme);
+  };
+
   return (
-    <UserContext.Provider value={{ userToken, setUserToken }}>
+    <UserContext.Provider
+      value={{ userToken, setUserToken, isDarkTheme, toggleTheme }}
+    >
       {children}
     </UserContext.Provider>
   );

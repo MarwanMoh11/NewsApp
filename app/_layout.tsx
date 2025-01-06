@@ -1,21 +1,24 @@
-import React, { useEffect } from 'react';
-import { View } from 'react-native';
-import { Slot, useRouter } from 'expo-router';
-import { UserProvider } from '../app/UserContext'; // Adjust the path to where your UserContext file is located
+// app/_layout.tsx
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { Slot } from 'expo-router';
+import { UserProvider } from './UserContext'; // Adjust the path if necessary
 
 const Layout: React.FC = () => {
-    const router = useRouter();
-
-    useEffect(() => {
-    }, [router]);
-
-    return (
-        <UserProvider>
-            <View style={{ flex: 1 }}>
-                <Slot />
-            </View>
-        </UserProvider>
-    );
+  return (
+    <UserProvider>
+      <View style={styles.container}>
+        <Slot />
+      </View>
+    </UserProvider>
+  );
 };
 
 export default Layout;
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#E9D5FF', // Match your app's background color
+  },
+});

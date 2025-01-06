@@ -1,3 +1,6 @@
+// ------------------------------------------------------
+// LoginStatus.tsx
+// ------------------------------------------------------
 import React, { useEffect, useContext, useState } from 'react';
 import { View, Text, StyleSheet, Platform, Alert, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -13,6 +16,7 @@ const LoginStatus: React.FC = () => {
   const { setUserToken } = useContext(UserContext);
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(true);
+  const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
 
   const { code: nativeCode, error: nativeError } = useLocalSearchParams();
 
@@ -52,7 +56,7 @@ const LoginStatus: React.FC = () => {
       body: JSON.stringify({ username: Nickname }),
     })
       .then(() => {
-        router.push('/');
+        setNavigationTarget('/'); // Navigate to Home after reactivation
       })
       .catch((err) => {
         console.error('Error reactivating account:', err);
@@ -83,7 +87,7 @@ const LoginStatus: React.FC = () => {
       const setUsernameResponse = await fetch(`${domaindynamo}/set-username`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: Nickname }),
+        body: JSON.stringify({ auth_token: token }),
       });
       const setUsernameData = await setUsernameResponse.json();
 
@@ -110,24 +114,25 @@ const LoginStatus: React.FC = () => {
             if (userConfirmed) {
               handleReactivation(Nickname);
             } else {
-              router.push('/');
+              setUserToken(null);
+              setNavigationTarget('/'); // Navigate to Home
             }
           } else {
             Alert.alert(
               'Account Reactivation',
               'Your account is currently deactivated. Would you like to reactivate it?',
               [
-                { text: 'Cancel', onPress: () => router.push('/') },
+                { text: 'Cancel', onPress: () => { setUserToken(null); setNavigationTarget('/') } },
                 { text: 'Reactivate', onPress: () => handleReactivation(Nickname) },
               ],
               { cancelable: false }
             );
           }
         } else {
-          router.push('/');
+          setNavigationTarget('/'); // Navigate to Home
         }
       } else {
-        router.push('/preferences');
+        setNavigationTarget('/preferences'); // Navigate to Preferences
       }
     } catch (err) {
       console.error('Error during user registration:', err);
@@ -141,8 +146,8 @@ const LoginStatus: React.FC = () => {
     const tokenEndpoint = `https://${domain}/oauth/token`;
 
     const redirectUri = Platform.OS === 'web'
-      ? makeRedirectUri({ path: 'loginStatus', useProxy: false })
-      : makeRedirectUri({ path: 'loginStatus' });
+      ? makeRedirectUri({ path: 'loginstatus', useProxy: false })
+      : makeRedirectUri({ path: 'loginstatus' });
 
     const requestBody = {
       grant_type: 'authorization_code',
@@ -177,6 +182,14 @@ const LoginStatus: React.FC = () => {
     const user = JSON.parse(userInfoResponseBody);
     await handleUserRegistration(user);
   };
+
+  // Handle navigation when navigationTarget is set
+  useEffect(() => {
+    if (navigationTarget) {
+      router.replace(navigationTarget);
+      setNavigationTarget(null); // Reset after navigation
+    }
+  }, [navigationTarget]);
 
   return (
     <View style={styles.container}>

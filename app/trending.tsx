@@ -30,7 +30,7 @@ const TrendingScreen: React.FC = () => {
   const [content, setContent] = useState<any[]>([]);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const { userToken, setUserToken } = useContext(UserContext);
+  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext);
   const router = useRouter();
 
   // For arrow-up button
@@ -243,14 +243,14 @@ const TrendingScreen: React.FC = () => {
   // ------------------ Main Render ------------------
   if (pageLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: isDarkTheme ? '#1F2937' : '#F4F7FA' }]}>
         <ActivityIndicator size="large" color="#6C63FF" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#111827' : '#F4F7FA' }]}>
       {/* Header */}
       {renderHeader()}
 
@@ -261,7 +261,9 @@ const TrendingScreen: React.FC = () => {
         </View>
       ) : errorMessage ? (
         <View style={styles.errorContainer}>
-          <Text style={styles.errorMessage}>{errorMessage}</Text>
+          <Text style={[styles.errorMessage, { color: isDarkTheme ? '#F87171' : '#FF0000' }]}>
+            {errorMessage}
+          </Text>
         </View>
       ) : (
         <Animated.FlatList
@@ -281,7 +283,9 @@ const TrendingScreen: React.FC = () => {
           scrollEventThrottle={16}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No trending content available.</Text>
+              <Text style={[styles.emptyText, { color: isDarkTheme ? '#D1D5DB' : '#555555' }]}>
+                No trending content available.
+              </Text>
             </View>
           }
         />
@@ -301,7 +305,6 @@ export default TrendingScreen;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F4F7FA',
     position: 'relative', // Ensure that absolutely positioned children are relative to this container
   },
   headerContainer: {
@@ -313,7 +316,6 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: '#F4F7FA',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -335,7 +337,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   errorMessage: {
-    color: '#FF0000',
     fontSize: 16,
   },
   emptyContainer: {
@@ -343,7 +344,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    color: '#555',
     fontSize: 16,
   },
 });

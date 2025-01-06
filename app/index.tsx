@@ -1,6 +1,5 @@
-// ------------------------------------------------------
 // HomePage.tsx
-// ------------------------------------------------------
+
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import {
   View,
@@ -11,22 +10,18 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
-  ScrollView,
-  Image,
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import Icon from 'react-native-vector-icons/Ionicons';
 import { makeRedirectUri, useAuthRequest } from 'expo-auth-session';
 
 import { UserContext } from '../app/UserContext';
-import TrendingScreen from '../app/trending';
-
-// New Reusable Components
 import HeaderTabs from '../components/HeaderTabs';
 import ChronicallyButton from '../components/ui/ChronicallyButton';
 import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
+import ArticleModal from './articlepage';
+import TweetModal from './tweetpage';
 
 // ------------------ AUTH0 CONFIG ------------------
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
@@ -43,6 +38,10 @@ const HomePage: React.FC = () => {
   const [pageLoading, setPageLoading] = useState(true);
   const [loadingLogin, setLoadingLogin] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null);
+  const [tweetModalVisible, setTweetModalVisible] = useState(false);
+  const [selectedTweetLink, setSelectedTweetLink] = useState<string | null>(null);
 
   // Auth0
   const [request, response, promptAsync] = useAuthRequest(
@@ -57,22 +56,19 @@ const HomePage: React.FC = () => {
   );
 
   // Tabs & Data
-  const [activeTab, setActiveTab] = useState<'My News' | 'Trending'>('My News');
-  const [preferences, setPreferences] = useState<string[]>([]);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>(['Trending', 'Technology', 'Health', 'Sports']);
+  const [activeCategory, setActiveCategory] = useState<string>('Trending');
+  const [selectedFilter, setSelectedFilter] = useState<string>('All');
   const [articlesAndTweets, setArticlesAndTweets] = useState<any[]>([]);
-  const [isSeeAll, setIsSeeAll] = useState(false);
+  const [isSeeAll, setIsSeeAll] = useState(false); // New state to track "See All" selection
   const [isLoading, setIsLoading] = useState(false);
-
-  // Filter
-  const [filterType, setFilterType] = useState<'all' | 'tweet' | 'article'>('all');
 
   // User
   const [username, setUsername] = useState<string | null>(null);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
 
   // Context & Nav
-  const { userToken, setUserToken } = useContext(UserContext);
+  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext);
   const router = useRouter();
   const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
@@ -81,17 +77,9 @@ const HomePage: React.FC = () => {
 
   // References to FlatList
   const flatListRef = useRef<FlatList<any> | null>(null);
-  const trendingFlatListRef = useRef<FlatList<any> | null>(null); // Reference for TrendingScreen FlatList
 
   // Create Animated.Value for scroll position
   const scrollY = useRef(new Animated.Value(0)).current;
-
-  // Interpolate scrollY to get header opacity
-  const headerOpacity = scrollY.interpolate({
-    inputRange: [0, 100], // Adjust the range as needed
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
 
   // ------------------ Auth / Login ------------------
   const handleLogin = async () => {
@@ -144,6 +132,7 @@ const HomePage: React.FC = () => {
       setUsername(null);
       setProfilePictureUrl(null);
       fetchPreferences('Guest');
+      console.log('Username: ', username);
       return;
     }
     try {
@@ -160,22 +149,23 @@ const HomePage: React.FC = () => {
       } else {
         setUsername(null);
         setProfilePictureUrl(null);
-        setPreferences([]);
+        setCategories(['Trending']);
       }
     } catch (error) {
       console.error('Error fetching username:', error);
       setUsername(null);
       setProfilePictureUrl(null);
-      setPreferences([]);
+      setCategories(['Trending']);
     }
   };
 
   const fetchPreferences = async (uname: string) => {
     if (!userToken) {
       const defaultPrefs = ['BREAKING NEWS', 'Football', 'Formula1', 'HEALTHY LIVING'];
-      setPreferences(defaultPrefs);
-      setSelectedCategory(defaultPrefs[0]);
-      fetchContent(defaultPrefs[0]);
+      setCategories(['Trending', ...defaultPrefs]);
+      setActiveCategory('Trending');
+      setSelectedFilter('All');
+      fetchContent('Trending', 'All');
     } else {
       try {
         const response = await fetch(`${domaindynamo}/check-preferences`, {
@@ -186,89 +176,199 @@ const HomePage: React.FC = () => {
         const data = await response.json();
         if (data.status === 'Success') {
           const fetchedPrefs: string[] = data.data.map((item: any) => item.preference);
-          setPreferences(fetchedPrefs);
+          setCategories(['Trending', ...fetchedPrefs]);
           if (fetchedPrefs.length > 0) {
-            setSelectedCategory(fetchedPrefs[0]);
-            fetchContent(fetchedPrefs[0]);
+            setActiveCategory('Trending');
+            setSelectedFilter('All');
+            fetchContent('Trending', 'All');
           }
         } else {
-          setPreferences([]);
+          setCategories(['Trending']);
+          setActiveCategory('Trending');
+          setSelectedFilter('All');
+          fetchContent('Trending', 'All');
         }
       } catch (error) {
         console.error('Error fetching preferences:', error);
-        setPreferences([]);
+        setCategories(['Trending']);
+        setActiveCategory('Trending');
+        setSelectedFilter('All');
+        fetchContent('Trending', 'All');
       }
     }
   };
 
-  const fetchContent = async (category: string) => {
+  // ------------------ Fetch Content Function ------------------
+  const fetchContent = async (category: string, filter: string) => {
+    // Reset state before fetching new content
+    setArticlesAndTweets([]);
     setIsLoading(true);
     setErrorMessage('');
 
     try {
-      const [articlesResponse, tweetsResponse] = await Promise.all([
-        fetch(
-          isSeeAll
-            ? `${domaindynamo}/get-allarticles`
-            : `${domaindynamo}/get-articles`,
-          {
+      if (category === 'Trending') {
+        // **Trending Category: Only fetch tweets, and do not group or sort**
+        const tweetsEndpoint = `${domaindynamo}/get_trending_tweets`;
+
+        const tweetsResponse = await fetch(tweetsEndpoint, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        const tweetsData = await tweetsResponse.json();
+
+        if (tweetsData.status === 'Success') {
+          // Just display what was returned, no grouping or sorting
+          const tweets = tweetsData.data || [];
+
+          // If filter is 'Tweets' or 'All', display them. Otherwise, empty.
+          if (filter === 'Tweets' || filter === 'All') {
+            setArticlesAndTweets(tweets.map((t: any) => ({ type: 'tweet', ...t })));
+          } else {
+            setArticlesAndTweets([]);
+          }
+        } else if (tweetsData.status === 'No tweets found') {
+          setArticlesAndTweets([]);
+          setErrorMessage('No trending tweets found.');
+        } else {
+          setArticlesAndTweets([]);
+          setErrorMessage('Failed to load trending tweets.');
+        }
+      } else if (category === 'See All') {
+        // **See All Category: Fetch all articles and tweets**
+        const articlesEndpoint = `${domaindynamo}/get-allarticles`;
+        const tweetsEndpoint = `${domaindynamo}/get-alltweets`;
+
+        const [articlesResponse, tweetsResponse] = await Promise.all([
+          fetch(articlesEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category }),
-          }
-        ),
-        fetch(
-          isSeeAll
-            ? `${domaindynamo}/get-alltweets`
-            : `${domaindynamo}/get-tweets`,
-          {
+            body: JSON.stringify({ category: 'all' }),
+          }),
+          fetch(tweetsEndpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ category }),
-          }
-        ),
-      ]);
+            body: JSON.stringify({ category: 'all' }),
+          }),
+        ]);
 
-      const articlesData = await articlesResponse.json();
-      const tweetsData = await tweetsResponse.json();
+        const articlesData = await articlesResponse.json();
+        const tweetsData = await tweetsResponse.json();
 
-      if (articlesData.status === 'Articles found' || tweetsData.status === 'Tweets found') {
-        const articles = articlesData.data || [];
-        const tweets = tweetsData.data || [];
+        let isArticlesSuccess = false;
+        let isTweetsSuccess = false;
 
-        // Merge and group
-        const combined = [
-          ...tweets.map((t: any) => ({ type: 'tweet', dateTime: t.Created_At, ...t })),
-          ...articles.map((a: any) => ({ type: 'article', dateTime: a.date, ...a })),
-        ];
-
-        // Group by day
-        const dayMap: Record<string, any[]> = {};
-        for (const item of combined) {
-          const day = formatDateToDay(item.dateTime);
-          if (!dayMap[day]) {
-            dayMap[day] = [];
-          }
-          dayMap[day].push(item);
+        if (articlesResponse.ok && articlesData.status === 'Articles found') {
+          isArticlesSuccess = true;
+        }
+        if (tweetsResponse.ok && tweetsData.status === 'Tweets found') {
+          isTweetsSuccess = true;
         }
 
-        // Sort days
-        const sortedDays = Object.keys(dayMap).sort(
-          (a, b) => new Date(b).getTime() - new Date(a).getTime()
-        );
+        if (isArticlesSuccess || isTweetsSuccess) {
+          const articles = isArticlesSuccess ? articlesData.data : [];
+          const tweets = isTweetsSuccess ? tweetsData.data : [];
 
-        // Flatten
-        let finalContent: any[] = [];
-        for (const day of sortedDays) {
-          // Sort items within each day by newest first
-          dayMap[day].sort(
-            (a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime()
-          );
-          finalContent.push(...dayMap[day]);
+          const combined = [
+            ...tweets.map((t: any) => ({ type: 'tweet', dateTime: t.Created_At, ...t })),
+            ...articles.map((a: any) => ({ type: 'article', dateTime: a.date, ...a })),
+          ];
+
+          // Group & sort logic
+          const dayMap: Record<string, any[]> = {};
+          for (const item of combined) {
+            const day = formatDateToDay(item.dateTime);
+            if (!dayMap[day]) {
+              dayMap[day] = [];
+            }
+            dayMap[day].push(item);
+          }
+          const sortedDays = Object.keys(dayMap).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+          let finalContent: any[] = [];
+          for (const day of sortedDays) {
+            dayMap[day].sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+            finalContent.push(...dayMap[day]);
+          }
+          setArticlesAndTweets(finalContent);
+        } else {
+          setArticlesAndTweets([]);
+          setErrorMessage('No content found for this category.');
         }
-        setArticlesAndTweets(finalContent);
       } else {
-        setArticlesAndTweets([]);
+        // **Other Categories: Fetch Both Articles and Tweets**
+        const articlesEndpoint = isSeeAll
+          ? `${domaindynamo}/get-allarticles`
+          : `${domaindynamo}/get-articles`;
+        const tweetsEndpoint = isSeeAll
+          ? `${domaindynamo}/get-alltweets`
+          : `${domaindynamo}/get-tweets`;
+
+        const [articlesResponse, tweetsResponse] = await Promise.all([
+          fetch(articlesEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: isSeeAll ? 'all' : category }),
+          }),
+          fetch(tweetsEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ category: isSeeAll ? 'all' : category }),
+          }),
+        ]);
+
+        const articlesData = await articlesResponse.json();
+        const tweetsData = await tweetsResponse.json();
+
+        let isArticlesSuccess = false;
+        let isTweetsSuccess = false;
+
+        if (articlesResponse.ok && articlesData.status === 'Articles found') {
+          isArticlesSuccess = true;
+        }
+        if (tweetsResponse.ok && tweetsData.status === 'Tweets found') {
+          isTweetsSuccess = true;
+        }
+
+        if (isArticlesSuccess || isTweetsSuccess) {
+          const articles = isArticlesSuccess ? articlesData.data : [];
+          const tweets = isTweetsSuccess ? tweetsData.data : [];
+
+          // Apply Filters
+          let filteredArticles = articles;
+          let filteredTweets = tweets;
+
+          if (filter === 'Articles') {
+            filteredTweets = [];
+          } else if (filter === 'Tweets') {
+            filteredArticles = [];
+          }
+          // If filter is 'All', no change to either
+
+          const combined = [
+            ...filteredTweets.map((t: any) => ({ type: 'tweet', dateTime: t.Created_At, ...t })),
+            ...filteredArticles.map((a: any) => ({ type: 'article', dateTime: a.date, ...a })),
+          ];
+
+          // Group & sort
+          const dayMap: Record<string, any[]> = {};
+          for (const item of combined) {
+            const day = formatDateToDay(item.dateTime);
+            if (!dayMap[day]) {
+              dayMap[day] = [];
+            }
+            dayMap[day].push(item);
+          }
+          const sortedDays = Object.keys(dayMap).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+          let finalContent: any[] = [];
+          for (const day of sortedDays) {
+            dayMap[day].sort((a, b) => new Date(b.dateTime).getTime() - new Date(a.dateTime).getTime());
+            finalContent.push(...dayMap[day]);
+          }
+          setArticlesAndTweets(finalContent);
+        } else {
+          setArticlesAndTweets([]);
+          setErrorMessage('No content found for this category.');
+        }
       }
     } catch (error) {
       console.error('Error fetching content:', error);
@@ -286,47 +386,27 @@ const HomePage: React.FC = () => {
       alertNotLoggedIn();
       return;
     }
-    try {
-      const response = await fetch(`${domaindynamo}/set-tweettodisp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, tweet: item }),
-      });
-      const data = await response.json();
-      if (data.status === 'Success' && data.token) {
-        setUserToken(data.token);
-        router.push('/tweetpage');
-      } else {
-        Alert.alert('Error', 'Failed to set tweet data');
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Unable to set tweet data');
-    }
+    // Instead of router.push('/tweetpage'), open the modal
+    setSelectedTweetLink(item.Tweet_Link);
+    setTweetModalVisible(true);
   };
 
-  const handleArticlePress = async (item: any) => {
+  const handlesettingspress = async () => {
     if (!userToken) {
       alertNotLoggedIn();
       return;
     }
-    try {
-      const response = await fetch(`${domaindynamo}/set-article-id`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, id: item.id }),
-      });
-      const data = await response.json();
-      if (data.status === 'Success') {
-        setUserToken(data.token);
-        router.push('/articlepage');
-      } else {
-        Alert.alert('Error', 'Failed to set article data');
-      }
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Unable to set article data');
+    router.push('/settings');
+  };
+
+  const handleArticlePress = (item: any) => {
+    if (!userToken) {
+      alertNotLoggedIn();
+      return;
     }
+    // Instead of pushing a new page, open the modal
+    setSelectedArticleId(item.id);
+    setModalVisible(true);
   };
 
   const alertNotLoggedIn = () => {
@@ -342,33 +422,31 @@ const HomePage: React.FC = () => {
     fetchUsername();
   }, [userToken]);
 
-  // ------------------ Category & Filter ------------------
+  useEffect(() => {
+    fetchContent(activeCategory, selectedFilter);
+  }, [activeCategory, selectedFilter]);
+
+  // ------------------ Category & Filter Handlers ------------------
   const handleCategorySelect = (category: string) => {
-    setIsSeeAll(false);
-    setSelectedCategory(category);
-    fetchContent(category);
+    setActiveCategory(category);
+    if (category === 'See All') {
+      setIsSeeAll(true);
+      setSelectedFilter('All'); // Optionally reset filter
+    } else {
+      setIsSeeAll(false);
+    }
   };
 
-  const handleSeeAll = () => {
-    setIsSeeAll(true);
-    setSelectedCategory(null);
-    fetchContent('all');
-  };
-
-  const handleFilterSelect = (type: 'all' | 'tweet' | 'article') => {
-    setFilterType(type);
-  };
-
-  // Returns the items that match the current filter
-  const getFilteredData = () => {
-    if (filterType === 'all') return articlesAndTweets;
-    return articlesAndTweets.filter((item) => item.type === filterType);
+  const handleFilterSelect = (filter: string) => {
+    setSelectedFilter(filter);
+    if (activeCategory === 'See All') {
+      setSelectedFilter('All');
+    }
   };
 
   // ------------------ Scroll Handling ------------------
   const handleScroll = (event: any) => {
     const currentOffset = event.nativeEvent.contentOffset.y;
-    // Show "arrow up" if user scrolls beyond 300px
     if (currentOffset > 300 && !scrolledFarDown) {
       setScrolledFarDown(true);
     } else if (currentOffset < 300 && scrolledFarDown) {
@@ -377,13 +455,8 @@ const HomePage: React.FC = () => {
   };
 
   const handleScrollToTop = () => {
-    console.log("handleScrollToTop called");
-    console.log("activeTab:", activeTab);
-
-    if (activeTab === 'My News' && flatListRef.current) {
+    if (flatListRef.current) {
       flatListRef.current.scrollToOffset({ offset: 0, animated: true });
-    } else if (activeTab === 'Trending' && trendingFlatListRef.current) {
-      trendingFlatListRef.current.scrollToOffset({ offset: 0, animated: true });
     }
   };
 
@@ -394,25 +467,6 @@ const HomePage: React.FC = () => {
     }
     return <ArticleCard item={item} onPress={() => handleArticlePress(item)} />;
   };
-
-  // ------------------ Header Rendering ------------------
-  const renderHeader = () => (
-    <HeaderTabs
-      activeTab={activeTab}
-      onTabPress={(tab) => {
-        if (tab === 'Trending') {
-          setActiveTab('Trending');
-        } else {
-          setActiveTab('My News');
-        }
-      }}
-      username={username}
-      profilePictureUrl={profilePictureUrl || undefined}
-      onSettingsPress={() => router.push('/settings')}
-      onLoginPress={handleLogin}
-      headerOpacity={headerOpacity} // Pass the interpolated opacity
-    />
-  );
 
   // ------------------ Bottom Bar ------------------
   const renderBottomBar = () => (
@@ -445,123 +499,48 @@ const HomePage: React.FC = () => {
     />
   );
 
-  // ------------------ List Header ------------------
-  const renderListHeader = () => (
-    <View>
+  // ------------------ Header Rendering ------------------
+  const renderHeader = () => {
+    const categoriesWithSeeAll = [...categories, 'See All'];
+    return (
+      <HeaderTabs
+        categories={categoriesWithSeeAll}
+        activeCategory={activeCategory}
+        onCategorySelect={handleCategorySelect}
+        onFilterSelect={handleFilterSelect}
+        selectedFilter={selectedFilter}
+        username={username}
+        profilePictureUrl={profilePictureUrl || undefined}
+        onSettingsPress={handlesettingspress}
+        onLoginPress={handleLogin}
+      />
+    );
+  };
+
+  // ------------------ Main Render ------------------
+
+  // Define dynamic styles based on the theme
+  const dynamicStyles = getStyles(isDarkTheme);
+
+  if (pageLoading) {
+    return (
+      <View style={dynamicStyles.loadingContainer}>
+        <ActivityIndicator size="large" color={isDarkTheme ? '#BB9CED' : '#6C63FF'} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={dynamicStyles.container}>
       {/* Header */}
       {renderHeader()}
 
-      {/* Categories and Filter (only for 'My News') */}
-      {activeTab === 'My News' && (
-        <View style={styles.categoryFilterWrapper}>
-          {/* SCROLLABLE CATEGORIES */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginVertical: 5 }}
-            contentContainerStyle={styles.categoriesContainer}
-          >
-            {preferences.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryButton,
-                  selectedCategory === cat && styles.categoryButtonActive,
-                ]}
-                onPress={() => handleCategorySelect(cat)}
-              >
-                <Text
-                  style={[
-                    styles.categoryButtonText,
-                    selectedCategory === cat && styles.categoryButtonTextActive,
-                  ]}
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-
-            {/* "See All" button */}
-            <TouchableOpacity
-              style={[styles.categoryButton, isSeeAll && styles.categoryButtonActive]}
-              onPress={handleSeeAll}
-            >
-              <Text
-                style={[
-                  styles.categoryButtonText,
-                  isSeeAll && styles.categoryButtonTextActive,
-                ]}
-              >
-                See All
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
-
-          {/* FILTER ROW */}
-          <View style={styles.filterRow}>
-            <Text style={styles.filterLabel}>Filter by:</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ flexDirection: 'row', alignItems: 'center' }}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  filterType === 'all' && styles.filterButtonActive,
-                ]}
-                onPress={() => handleFilterSelect('all')}
-              >
-                <Text style={styles.filterButtonText}>All</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  filterType === 'tweet' && styles.filterButtonActive,
-                ]}
-                onPress={() => handleFilterSelect('tweet')}
-              >
-                <Text style={styles.filterButtonText}>Tweets</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  filterType === 'article' && styles.filterButtonActive,
-                ]}
-                onPress={() => handleFilterSelect('article')}
-              >
-                <Text style={styles.filterButtonText}>Articles</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-
-// ------------------ Main Render ------------------
-if (pageLoading) {
-  return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#6C63FF" />
-    </View>
-  );
-}
-
-return (
-  <View style={styles.container}>
-    {/* Content Area */}
-    {activeTab === 'Trending' ? (
-      <TrendingScreen flatListRef={trendingFlatListRef} />
-    ) : (
+      {/* Content Area */}
       <FlatList
         ref={flatListRef}
-        data={getFilteredData()}
+        data={articlesAndTweets}
         renderItem={renderContentCard}
         keyExtractor={(item, index) => `${item.type}-${index}`}
-        ListHeaderComponent={renderListHeader}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
@@ -570,119 +549,72 @@ return (
           }
         )}
         scrollEventThrottle={16}
-        contentContainerStyle={styles.listContentContainer}
+        contentContainerStyle={dynamicStyles.listContentContainer}
         ListEmptyComponent={
           isLoading ? (
-            <View style={styles.loaderContainer}>
-              <ActivityIndicator size="large" color="#6C63FF" />
+            <View style={dynamicStyles.loaderContainer}>
+              <ActivityIndicator size="large" color={isDarkTheme ? '#BB9CED' : '#6C63FF'} />
             </View>
           ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No content available.</Text>
+            <View style={dynamicStyles.emptyContainer}>
+              <Text style={dynamicStyles.emptyText}>No content available.</Text>
             </View>
           )
         }
       />
-    )}
 
-    {/* Bottom Bar - Always Rendered */}
-    {activeTab === 'My News' && renderBottomBar()}
-  </View>
-);
+      {/* Bottom Bar - Visible for all categories */}
+      {renderBottomBar()}
+
+      {/* Article Modal */}
+      <ArticleModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        articleId={selectedArticleId}
+      />
+
+      {/* Tweet Modal */}
+      <TweetModal
+        visible={tweetModalVisible}
+        onClose={() => setTweetModalVisible(false)}
+        tweetLink={selectedTweetLink}
+      />
+    </View>
+  );
 };
+
 export default HomePage;
 
-// ------------------------------------------------------
-// STYLES
-// ------------------------------------------------------
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F4F7FA',
-    position: 'relative', // Ensure that absolutely positioned children are relative to this container
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: '#F4F7FA',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  categoryFilterWrapper: {
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E2E2',
-    paddingVertical: 6,
-    paddingHorizontal: 7,
-  },
-  categoriesContainer: {
-    alignItems: 'center',
-    // Optional: Add paddingHorizontal if needed
-  },
-  categoryButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 5,
-    marginRight: 4,
-    marginVertical: 4,
-  },
-  categoryButtonActive: {
-    backgroundColor: '#6C63FF',
-  },
-  categoryButtonText: {
-    color: '#333',
-    fontSize: 14,
-  },
-  categoryButtonTextActive: {
-    color: '#FFF',
-  },
-  filterRow: {
-    marginTop: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterLabel: {
-    color: '#333',
-    fontSize: 14,
-    marginRight: 8,
-  },
-  filterButton: {
-    marginRight: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    backgroundColor: '#F0F0F0',
-    borderRadius: 5,
-  },
-  filterButtonActive: {
-    backgroundColor: '#6C63FF',
-  },
-  filterButtonText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  listContentContainer: {
-    paddingHorizontal: 15,
-    paddingBottom: 80, // So bottom bar doesn't overlap content
-  },
-  loaderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorContainer: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  errorMessage: {
-    color: '#FF0000',
-    fontSize: 16,
-  },
-  emptyContainer: {
-    padding: 10,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#555',
-    fontSize: 16,
-  },
-});
+// ------------------ Styles ------------------
+const getStyles = (isDarkTheme: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: isDarkTheme ? '#1F2937' : '#F4F7FA',
+    },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: isDarkTheme ? '#1F2937' : '#F4F7FA',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    listContentContainer: {
+      paddingHorizontal: 15,
+      paddingBottom: 80, // So bottom bar doesn't overlap content
+      paddingTop: 10,
+    },
+    loaderContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 20,
+    },
+    emptyContainer: {
+      padding: 10,
+      alignItems: 'center',
+    },
+    emptyText: {
+      color: isDarkTheme ? '#D1D5DB' : '#555555',
+      fontSize: 16,
+    },
+  });

@@ -1,5 +1,6 @@
+// ------------------------------------------------------
 // pages/FollowingPage.tsx
-
+// ------------------------------------------------------
 import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
@@ -9,7 +10,7 @@ import {
   FlatList,
   Alert,
   TextInput,
-  Platform
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -28,7 +29,7 @@ const FollowingPage: React.FC = () => {
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const router = useRouter();
 
-  const { userToken } = useContext(UserContext); // Access the token
+  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext); // Consume isDarkTheme
 
   useEffect(() => {
     if (userToken) {
@@ -167,10 +168,32 @@ const FollowingPage: React.FC = () => {
 
   const renderFollowedCard = ({ item }: { item: string }) => {
     return (
-      <View style={styles.followedCard}>
+      <View
+        style={[
+          styles.followedCard,
+          {
+            backgroundColor: isDarkTheme ? '#1F2937' : '#f9f9f9',
+            borderColor: isDarkTheme ? '#374151' : '#E0E0E0',
+          },
+        ]}
+      >
         <View style={styles.cardContent}>
-          <Ionicons name="person" size={30} style={styles.userIcon} />
-          <Text style={styles.userName}>{item}</Text>
+          <Ionicons
+            name="person"
+            size={30}
+            style={[
+              styles.userIcon,
+              { color: isDarkTheme ? '#BB9CED' : '#6C63FF' },
+            ]}
+          />
+          <Text
+            style={[
+              styles.userName,
+              { color: isDarkTheme ? '#F3F4F6' : '#333333' },
+            ]}
+          >
+            {item}
+          </Text>
         </View>
         <TouchableOpacity
           style={styles.closeButton}
@@ -179,39 +202,82 @@ const FollowingPage: React.FC = () => {
           accessibilityRole="button"
           accessibilityLabel={`Unfollow ${item}`}
         >
-          <Ionicons name="close" size={20} style={styles.closeIcon} />
+          <Ionicons
+            name="close"
+            size={20}
+            style={[
+              styles.closeIcon,
+              { color: isDarkTheme ? '#F87171' : 'red' },
+            ]}
+          />
         </TouchableOpacity>
       </View>
     );
   };
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' },
+      ]}
+    >
       {/* Back Button */}
       <BackButton />
 
-      {/* Header with Tabs and Settings Icon */}
-      <View style={styles.header}>
+      {/* Header with Tabs */}
+      <View
+        style={[
+          styles.header,
+          { borderBottomColor: isDarkTheme ? '#374151' : '#E0E0E0' },
+        ]}
+      >
         <View style={styles.tabsContainer}>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Add Friends' && styles.activeTabButton]}
+            style={[
+              styles.tabButton,
+              activeTab === 'Add Friends' && styles.activeTabButton,
+              activeTab === 'Add Friends' && {
+                borderBottomColor: '#A1A0FE',
+              },
+            ]}
             onPress={() => handleTabChange('Add Friends')}
             accessible={true}
             accessibilityRole="button"
             accessibilityLabel="Add Friends Tab"
           >
-            <Text style={[styles.tabText, activeTab === 'Add Friends' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Add Friends' && styles.activeTabText,
+                activeTab === 'Add Friends' && { color: '#A1A0FE' },
+                activeTab !== 'Add Friends' && { color: '#888888' },
+              ]}
+            >
               Add Friends
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tabButton, activeTab === 'Reposts' && styles.activeTabButton]}
+            style={[
+              styles.tabButton,
+              activeTab === 'Reposts' && styles.activeTabButton,
+              activeTab === 'Reposts' && {
+                borderBottomColor: '#A1A0FE',
+              },
+            ]}
             onPress={() => handleTabChange('Reposts')}
             accessible={true}
             accessibilityRole="button"
             accessibilityLabel="Reposts Tab"
           >
-            <Text style={[styles.tabText, activeTab === 'Reposts' && styles.activeTabText]}>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === 'Reposts' && styles.activeTabText,
+                activeTab === 'Reposts' && { color: '#A1A0FE' },
+                activeTab !== 'Reposts' && { color: '#888888' },
+              ]}
+            >
               Reposts
             </Text>
           </TouchableOpacity>
@@ -224,11 +290,22 @@ const FollowingPage: React.FC = () => {
       ) : (
         <>
           {/* Search Bar */}
-          <View style={styles.searchBarContainer}>
+          <View
+            style={[
+              styles.searchBarContainer,
+              {
+                backgroundColor: isDarkTheme ? '#374151' : '#F5F5F5',
+                borderColor: isDarkTheme ? '#374151' : '#CCC',
+              },
+            ]}
+          >
             <TextInput
-              style={styles.searchInput}
+              style={[
+                styles.searchInput,
+                { color: isDarkTheme ? '#F3F4F6' : '#000000' },
+              ]}
               placeholder="Search for a user"
-              placeholderTextColor="#888"
+              placeholderTextColor={isDarkTheme ? '#D1D5DB' : '#888888'}
               value={searchUsername}
               onChangeText={(text) => {
                 setSearchUsername(text);
@@ -238,34 +315,81 @@ const FollowingPage: React.FC = () => {
               accessibilityLabel="Search for a user"
             />
             <TouchableOpacity
-              style={styles.searchButton}
+              style={[
+                styles.searchButton,
+                { backgroundColor: '#A1A0FE' },
+              ]}
               onPress={() => searchUser(searchUsername)}
               accessible={true}
               accessibilityRole="button"
               accessibilityLabel="Search Button"
             >
-              <Text style={styles.searchButtonText}>Search</Text>
+              <Text style={[styles.searchButtonText, { color: '#FFFFFF' }]}>
+                Search
+              </Text>
             </TouchableOpacity>
           </View>
 
           {/* Error Message */}
-          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
+          {errorMessage ? (
+            <Text
+              style={[
+                styles.errorText,
+                { color: isDarkTheme ? '#F87171' : 'red' },
+              ]}
+            >
+              {errorMessage}
+            </Text>
+          ) : null}
 
           {/* Search Results */}
           {searchUsername.trim().length > 0 && (
-            <View style={styles.searchResultsContainer}>
+            <View
+              style={[
+                styles.searchResultsContainer,
+                {
+                  backgroundColor: isDarkTheme ? '#1F2937' : '#FFFFFF',
+                  borderColor: isDarkTheme ? '#374151' : '#CCC',
+                },
+              ]}
+            >
               {searchResults.length > 0 ? (
                 <FlatList
                   data={searchResults}
                   keyExtractor={(item) => item}
                   renderItem={({ item }) => (
-                    <TouchableOpacity onPress={() => handleFollow(item)} style={styles.searchResultItem} accessible={true} accessibilityRole="button" accessibilityLabel={`Follow ${item}`}>
-                      <Text style={styles.searchResultText}>{item}</Text>
+                    <TouchableOpacity
+                      onPress={() => handleFollow(item)}
+                      style={[
+                        styles.searchResultItem,
+                        {
+                          borderBottomColor: isDarkTheme ? '#374151' : '#EEE',
+                        },
+                      ]}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Follow ${item}`}
+                    >
+                      <Text
+                        style={[
+                          styles.searchResultText,
+                          { color: isDarkTheme ? '#F3F4F6' : '#000000' },
+                        ]}
+                      >
+                        {item}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 />
               ) : (
-                <Text style={styles.noResultsText}>No results found</Text>
+                <Text
+                  style={[
+                    styles.noResultsText,
+                    { color: isDarkTheme ? '#D1D5DB' : '#888888' },
+                  ]}
+                >
+                  No results found
+                </Text>
               )}
             </View>
           )}
@@ -277,10 +401,18 @@ const FollowingPage: React.FC = () => {
             keyExtractor={(item) => item}
             contentContainerStyle={styles.followedListContainer}
             ListEmptyComponent={
-              <Text style={styles.noContent}>You are not currently following any users.</Text>
+              <Text
+                style={[
+                  styles.noContent,
+                  { color: isDarkTheme ? '#D1D5DB' : '#888888' },
+                ]}
+              >
+                You are not currently following any users.
+              </Text>
             }
             accessible={true}
             accessibilityLabel="List of followed users"
+            style={{ backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }}
           />
         </>
       )}
@@ -290,20 +422,23 @@ const FollowingPage: React.FC = () => {
 
 export default FollowingPage;
 
+// ------------------------------------------------------
+// STYLES
+// ------------------------------------------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    position: 'relative', // Ensure that absolutely positioned children are relative to this container
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center', // Center the tabs
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 20, // Adjust for status bar
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#E0E0E0',
+    // borderBottomColor handled dynamically
   },
   tabsContainer: {
     flexDirection: 'row',
@@ -313,79 +448,76 @@ const styles = StyleSheet.create({
   tabButton: {
     marginHorizontal: 20,
     paddingBottom: 5,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent', // Default transparent border
   },
   tabText: {
     fontSize: 18,
-    color: '#888',
+    color: '#888888', // Default secondary text color
   },
   activeTabButton: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#A1A0FE',
+    // Additional styles if needed
   },
   activeTabText: {
-    color: '#333',
     fontWeight: 'bold',
-  },
-  settingsIcon: {
-    // Positioned via header's justifyContent
   },
   searchBarContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     margin: 10,
     paddingHorizontal: 20,
+    borderWidth: 1,
+    borderRadius: 20,
+    // backgroundColor and borderColor handled dynamically
   },
   searchInput: {
     flex: 1,
     height: 40,
-    borderWidth: 1,
-    borderColor: '#CCC',
-    borderRadius: 20,
     paddingHorizontal: 15,
     fontSize: 16,
-    backgroundColor: '#F5F5F5',
-    color: '#000',
+    borderRadius: 20,
+    // color handled dynamically
   },
   searchButton: {
     marginLeft: 10,
-    backgroundColor: '#A1A0FE',
     paddingVertical: 10,
     paddingHorizontal: 15,
     borderRadius: 20,
+    backgroundColor: '#A1A0FE', // Accent color
   },
   searchButtonText: {
-    color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#FFFFFF', // White text
   },
   errorText: {
-    color: 'red',
     marginHorizontal: 20,
     marginTop: 5,
     fontSize: 14,
+    color: 'red', // Default red color, overridden dynamically
   },
   searchResultsContainer: {
     maxHeight: 200,
     borderWidth: 1,
-    borderColor: '#CCC',
     borderRadius: 5,
     marginHorizontal: 20,
     marginTop: 5,
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF', // Default white, overridden dynamically
+    borderColor: '#CCC', // Default border, overridden dynamically
   },
   searchResultItem: {
     padding: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    borderBottomColor: '#EEE', // Default border, overridden dynamically
   },
   searchResultText: {
     fontSize: 16,
-    color: '#000',
+    color: '#000000', // Default black, overridden dynamically
   },
   noResultsText: {
     padding: 10,
     fontSize: 16,
-    color: '#888',
+    color: '#888888', // Default gray, overridden dynamically
   },
   followedListContainer: {
     paddingHorizontal: 20,
@@ -397,11 +529,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 10,
     marginBottom: 10,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: '#f9f9f9', // Default background, overridden dynamically
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0', // Default border, overridden dynamically
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
@@ -412,22 +546,22 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: 16,
-    color: '#000000',
+    color: '#333333', // Default text color, overridden dynamically
   },
   userIcon: {
     marginRight: 10,
-    color: '#6C63FF',
+    color: '#6C63FF', // Default icon color, overridden dynamically
   },
   closeButton: {
     // Positioned at the end
   },
   closeIcon: {
-    color: 'red',
+    color: 'red', // Default red color, overridden dynamically
   },
   noContent: {
     textAlign: 'center',
     fontSize: 16,
-    color: '#888',
+    color: '#888888', // Default gray, overridden dynamically
     marginTop: 20,
   },
 });
