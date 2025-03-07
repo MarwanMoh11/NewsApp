@@ -1,6 +1,3 @@
-// ------------------------------------------------------
-// components/TweetCard.tsx
-// ------------------------------------------------------
 import React, { useState, useEffect, useContext } from 'react';
 import {
   TouchableOpacity,
@@ -11,7 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { UserContext } from '../app/UserContext'; // Adjust the path if necessary
+import { UserContext } from '../app/UserContext';
 
 interface TweetCardProps {
   item: any;
@@ -19,15 +16,15 @@ interface TweetCardProps {
 }
 
 const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
-  const { isDarkTheme } = useContext(UserContext); // Consume theme from context
+  const { isDarkTheme } = useContext(UserContext);
 
-  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
 
   const screenWidth = Dimensions.get('window').width;
-  const cardWidth = screenWidth * 0.8; // 80% of screen width
-  const MAX_IMAGE_HEIGHT = 300; // Maximum height for the image
+  const cardWidth = screenWidth * 0.8;
+  const MAX_IMAGE_HEIGHT = 300;
 
   useEffect(() => {
     if (item.Media_URL) {
@@ -47,7 +44,7 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
         },
         (error) => {
           console.error('Failed to get image size:', error);
-          setAspectRatio(16 / 9); // Fallback aspect ratio
+          setAspectRatio(16 / 9);
           setHasError(true);
           setIsLoading(false);
         }
@@ -65,8 +62,7 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
       accessibilityRole="button"
       accessibilityLabel="Tweet card"
     >
-      {/* Display image if Media_URL exists */}
-      {item.Media_URL ? (
+      {item.Media_URL && (
         <View style={isDarkTheme ? styles.imageContainerDark : styles.imageContainerLight}>
           {isLoading && (
             <ActivityIndicator
@@ -85,7 +81,7 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
                   maxHeight: MAX_IMAGE_HEIGHT,
                 },
               ]}
-              resizeMode="contain" // Ensures the whole image is visible
+              resizeMode="contain"
               onError={(e) => {
                 console.error('Failed to load image:', e.nativeEvent.error);
                 setHasError(true);
@@ -94,7 +90,6 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
               accessibilityLabel="Tweet image"
             />
           ) : (
-            // Display placeholder or error message on error
             <View
               style={[
                 styles.tweetImage,
@@ -102,7 +97,7 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
                   aspectRatio: aspectRatio,
                   justifyContent: 'center',
                   alignItems: 'center',
-                  backgroundColor: isDarkTheme ? '#374151' : '#F0F0F0',
+                  backgroundColor: isDarkTheme ? '#2A2A2A' : '#F0F0F0',
                 },
               ]}
             >
@@ -112,7 +107,7 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
             </View>
           )}
         </View>
-      ) : null}
+      )}
 
       <View style={styles.tweetContent}>
         <Text style={isDarkTheme ? styles.tweetUsernameDark : styles.tweetUsernameLight}>
@@ -121,7 +116,11 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
         <Text style={isDarkTheme ? styles.tweetDateDark : styles.tweetDateLight}>
           {formatToUTCT(item.Created_At)}
         </Text>
-        <Text style={isDarkTheme ? styles.tweetTextDark : styles.tweetTextLight} numberOfLines={3} ellipsizeMode="tail">
+        <Text
+          style={isDarkTheme ? styles.tweetTextDark : styles.tweetTextLight}
+          numberOfLines={3}
+          ellipsizeMode="tail"
+        >
           {item.Tweet}
         </Text>
       </View>
@@ -129,7 +128,6 @@ const TweetCard: React.FC<TweetCardProps> = ({ item, onPress }) => {
   );
 };
 
-// Utility function to format UTC date
 const formatToUTCT = (isoDate: string): string => {
   const date = new Date(isoDate);
   const hours = String(date.getUTCHours()).padStart(2, '0');
@@ -155,9 +153,9 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
   },
-  // Dark Theme Styles
+  // Dark Theme Styles (updated for contrast)
   tweetCardDark: {
-    backgroundColor: '#374151', // Dark gray background
+    backgroundColor: '#1E1E1E',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -169,23 +167,21 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
   },
-  // Light Theme Image Container
   imageContainerLight: {
     position: 'relative',
     width: '100%',
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 12,
-    backgroundColor: '#F0F0F0', // Light background
+    backgroundColor: '#F0F0F0',
   },
-  // Dark Theme Image Container
   imageContainerDark: {
     position: 'relative',
     width: '100%',
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 12,
-    backgroundColor: '#4B5563', // Dark background
+    backgroundColor: '#2A2A2A',
   },
   loadingIndicator: {
     position: 'absolute',
@@ -196,7 +192,6 @@ const styles = StyleSheet.create({
   },
   tweetImage: {
     width: '100%',
-    // height is determined by aspectRatio and maxHeight
   },
   errorTextLight: {
     color: '#AA0000',
@@ -208,9 +203,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  tweetContent: {
-    // Additional styling for content if needed
-  },
+  tweetContent: {},
   tweetUsernameLight: {
     color: '#6C63FF',
     fontSize: 18,
@@ -218,6 +211,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   tweetUsernameDark: {
+    // Retained accent color for the username, but can be adjusted if desired
     color: '#BB9CED',
     fontSize: 18,
     marginBottom: 4,
@@ -230,7 +224,7 @@ const styles = StyleSheet.create({
   },
   tweetDateDark: {
     fontSize: 14,
-    color: '#D1D5DB',
+    color: '#AAAAAA',
     marginBottom: 8,
   },
   tweetTextLight: {
@@ -240,7 +234,7 @@ const styles = StyleSheet.create({
   },
   tweetTextDark: {
     fontSize: 14,
-    color: '#F3F4F6',
+    color: '#CCCCCC',
     lineHeight: 20,
   },
 });

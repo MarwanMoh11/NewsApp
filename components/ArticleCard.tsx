@@ -1,4 +1,3 @@
-// components/ArticleCard.tsx
 import React, { useState, useEffect, useContext } from 'react';
 import {
   TouchableOpacity,
@@ -9,7 +8,7 @@ import {
   Dimensions,
   ActivityIndicator,
 } from 'react-native';
-import { UserContext } from '../app/UserContext'; // Adjust the path if necessary
+import { UserContext } from '../app/UserContext';
 
 interface ArticleCardProps {
   item: any;
@@ -17,27 +16,24 @@ interface ArticleCardProps {
 }
 
 const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
-  const { isDarkTheme } = useContext(UserContext); // Consume theme from context
+  const { isDarkTheme } = useContext(UserContext);
 
-  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9); // Default aspect ratio
+  const [aspectRatio, setAspectRatio] = useState<number>(16 / 9);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasError, setHasError] = useState<boolean>(false);
 
   const screenWidth = Dimensions.get('window').width;
-  const cardWidth = screenWidth * 0.8; // 80% of screen width
-  const MAX_IMAGE_HEIGHT = 300; // Maximum height for the image
+  const cardWidth = screenWidth * 0.8;
+  const MAX_IMAGE_HEIGHT = 300;
 
-  // If there's an image URL, attempt to get its dimensions to compute aspect ratio
   useEffect(() => {
     if (item.image_url) {
       Image.getSize(
         item.image_url,
         (width, height) => {
-          // Avoid divide by zero
           if (height !== 0) {
             const ratio = width / height;
             const calculatedHeight = cardWidth / ratio;
-            // If the calculated height is bigger than our max, adjust the ratio
             if (calculatedHeight > MAX_IMAGE_HEIGHT) {
               setAspectRatio(cardWidth / MAX_IMAGE_HEIGHT);
             } else {
@@ -48,7 +44,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
         },
         (error) => {
           console.error('Failed to get image size:', error);
-          setAspectRatio(16 / 9); // Fallback aspect ratio
+          setAspectRatio(16 / 9);
           setHasError(true);
           setIsLoading(false);
         }
@@ -66,10 +62,8 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
       accessibilityRole="button"
       accessibilityLabel="Article card"
     >
-      {/* Display image only if image_url exists and there's no error */}
       {item.image_url && !hasError && (
         <View style={isDarkTheme ? styles.imageContainerDark : styles.imageContainerLight}>
-          {/* Show loading spinner until image size is determined or an error occurs */}
           {isLoading && (
             <ActivityIndicator
               style={styles.loadingIndicator}
@@ -87,7 +81,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
                   maxHeight: MAX_IMAGE_HEIGHT,
                 },
               ]}
-              resizeMode="contain" // Ensure the entire image is visible without cropping
+              resizeMode="contain"
               onError={(e) => {
                 console.error('Failed to load image:', e.nativeEvent.error);
                 setHasError(true);
@@ -96,7 +90,6 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
               accessibilityLabel="Article image"
             />
           ) : (
-            // Display placeholder or error message on error
             <View
               style={[
                 styles.articleImage,
@@ -104,7 +97,7 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
                   aspectRatio: aspectRatio,
                   justifyContent: 'center',
                   alignItems: 'center',
-                  backgroundColor: isDarkTheme ? '#374151' : '#F0F0F0',
+                  backgroundColor: isDarkTheme ? '#2A2A2A' : '#F0F0F0',
                 },
               ]}
             >
@@ -131,7 +124,6 @@ const ArticleCard: React.FC<ArticleCardProps> = ({ item, onPress }) => {
   );
 };
 
-// Utility function to format UTC date (DD-MM-YYYY)
 const formatToUTCA = (isoDate: string): string => {
   if (!isoDate) return '';
   const date = new Date(isoDate);
@@ -156,9 +148,9 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
   },
-  // Dark Theme Styles
+  // Dark Theme Styles (adjusted for strong contrast with #121212)
   articleCardDark: {
-    backgroundColor: '#1F2937', // Dark background
+    backgroundColor: '#1E1E1E',
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
@@ -170,23 +162,21 @@ const styles = StyleSheet.create({
     width: '90%',
     alignSelf: 'center',
   },
-  // Light Theme Image Container
   imageContainerLight: {
     position: 'relative',
     width: '100%',
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 12,
-    backgroundColor: '#F0F0F0', // Light background
+    backgroundColor: '#F0F0F0',
   },
-  // Dark Theme Image Container
   imageContainerDark: {
     position: 'relative',
     width: '100%',
     borderRadius: 8,
     overflow: 'hidden',
     marginBottom: 12,
-    backgroundColor: '#374151', // Dark background (darker than TweetCard)
+    backgroundColor: '#2A2A2A',
   },
   loadingIndicator: {
     position: 'absolute',
@@ -197,7 +187,6 @@ const styles = StyleSheet.create({
   },
   articleImage: {
     width: '100%',
-    // height is determined by aspectRatio and maxHeight
   },
   errorTextLight: {
     color: '#AA0000',
@@ -209,9 +198,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
   },
-  articleContent: {
-    // Additional styling for content if needed
-  },
+  articleContent: {},
   articleTitleLight: {
     fontSize: 18,
     fontWeight: 'bold',
@@ -221,7 +208,7 @@ const styles = StyleSheet.create({
   articleTitleDark: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#F3F4F6',
+    color: '#FFFFFF',
     marginBottom: 4,
   },
   articleAuthorLight: {
@@ -231,7 +218,7 @@ const styles = StyleSheet.create({
   },
   articleAuthorDark: {
     fontSize: 14,
-    color: '#D1D5DB',
+    color: '#CCCCCC',
     marginBottom: 4,
   },
   articleDateLight: {
@@ -241,13 +228,8 @@ const styles = StyleSheet.create({
   },
   articleDateDark: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: '#AAAAAA',
     marginBottom: 8,
-  },
-  articleDescription: {
-    fontSize: 14,
-    color: '#333333',
-    lineHeight: 20,
   },
 });
 

@@ -1,5 +1,6 @@
 // ------------------------------------------------------
 // ProfileSettings.tsx
+// (With Loading Spinner, Go Back, and Username Checks)
 // ------------------------------------------------------
 import React, { useState, useEffect, useContext } from 'react';
 import {
@@ -13,45 +14,42 @@ import {
   Animated,
   ActivityIndicator,
   Platform,
-  Modal, // Import Modal
-  Pressable, // Import Pressable
-  Dimensions, // Import Dimensions for responsive sizing
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { UserContext } from '../app/UserContext'; // Adjust the path if necessary
+import { UserContext } from '../app/UserContext';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons'; // Import Ionicons
-import WebCamera from '../components/WebCamera'; // Import the WebCamera component
+import { Ionicons } from '@expo/vector-icons';
+import WebCamera from '../components/WebCamera';
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
 // Cloudinary Configuration
 const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/davi2jx4z/image/upload';
-const CLOUDINARY_UPLOAD_PRESET = 'unsigned_preset'; // Ensure this matches exactly with Cloudinary
+const CLOUDINARY_UPLOAD_PRESET = 'unsigned_preset';
 
 export default function ProfileSettings() {
   const router = useRouter();
-  const { userToken, setUserToken, isDarkTheme, toggleTheme } = useContext(UserContext);
+  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext);
 
-  // -------------- Loading States --------------
-  const [pageLoading, setPageLoading] = useState(true);
-  const [uploadingImage, setUploadingImage] = useState(false); // State for image upload
+  // -------------- Loading / Saving States --------------
+  const [pageLoading, setPageLoading] = useState(true);    // Initial page load
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false); // For "Save Changes" spinner
 
   // -------------- Profile Data --------------
   const [fullName, setFullName] = useState('John Doe');
-  const [username, setUsername] = useState('USA');
+  const [username, setUsername] = useState('');
   const [newUsername, setNewUsername] = useState('');
-  const [pfp, setPfp] = useState<string>(
-    'https://via.placeholder.com/150?text=Profile+Picture'
-  );
+  const [pfp, setPfp] = useState<string>('https://via.placeholder.com/150?text=Profile+Picture');
 
   // Animate the save button for feedback
   const [buttonScale] = useState(new Animated.Value(1));
 
-  // -------------- Modal Visibility State --------------
+  // -------------- Modal Visibility States --------------
   const [isModalVisible, setModalVisible] = useState(false);
-
-  // -------------- WebCamera Visibility State --------------
   const [isWebCameraVisible, setWebCameraVisible] = useState(false);
 
   // -------------- Fetch Data on Mount --------------
@@ -74,6 +72,7 @@ export default function ProfileSettings() {
 
         if (data.status === 'Success' && data.username) {
           setUsername(data.username);
+          setNewUsername(data.username);
 
           const fullNameRes = await fetch(
             `${domaindynamo}/get-full-name?username=${encodeURIComponent(data.username)}`
@@ -105,7 +104,7 @@ export default function ProfileSettings() {
     fetchProfile();
   }, [userToken]);
 
-  // -------------- Animate Button --------------
+  // -------------- Animate Save Button --------------
   const animateButton = () => {
     Animated.sequence([
       Animated.timing(buttonScale, { toValue: 0.95, duration: 100, useNativeDriver: true }),
@@ -115,15 +114,28 @@ export default function ProfileSettings() {
 
   // -------------- Save Handler --------------
   const handleSave = async () => {
+    // Basic check for empty username
+    if (!newUsername.trim()) {
+      Alert.alert('Error', 'Username cannot be empty.');
+      return;
+    }
+    // Optionally, you could also check for empty fullName if needed
+    // if (!fullName.trim()) {
+    //   Alert.alert('Error', 'Name cannot be empty.');
+    //   return;
+    // }
+
     if (!userToken) {
       Alert.alert('Error', 'You must be logged in to save changes.');
       return;
     }
 
+    setSavingProfile(true); // Show the saving spinner
+
     try {
       let updatedToken = userToken;
 
-      // Update full name
+      // Update full name (optional check if you want to forbid empty)
       if (fullName !== 'Guest') {
         const fullNameRes = await fetch(`${domaindynamo}/update_full_name`, {
           method: 'POST',
@@ -132,7 +144,7 @@ export default function ProfileSettings() {
         });
         const fullNameData = await fullNameRes.json();
         if (fullNameData.status === 'Success') {
-          updatedToken = fullNameData.token; // Update token
+          updatedToken = fullNameData.token;
           setUserToken(updatedToken);
         } else {
           throw new Error('Failed to update full name');
@@ -148,15 +160,15 @@ export default function ProfileSettings() {
         });
         const usernameData = await usernameRes.json();
         if (usernameData.status === 'Success') {
-          updatedToken = usernameData.token; // Update token
+          updatedToken = usernameData.token;
           setUserToken(updatedToken);
           setUsername(newUsername);
         } else {
-          throw new Error('Failed to update username');
+          throw new Error(usernameData.message || 'Failed to update username');
         }
       }
 
-      // Update profile picture
+      // Update profile picture if changed
       if (
         pfp &&
         pfp !== 'https://via.placeholder.com/150?text=Profile+Picture' &&
@@ -169,65 +181,62 @@ export default function ProfileSettings() {
         });
         const pfpData = await pfpRes.json();
         if (pfpData.status === 'Success') {
-          updatedToken = pfpData.token; // Update token
+          updatedToken = pfpData.token;
           setUserToken(updatedToken);
         } else {
-          throw new Error('Failed to update profile picture');
+          throw new Error(pfpData.message || 'Failed to update profile picture');
         }
       }
 
       Alert.alert('Success', 'Profile changes saved successfully.');
-      router.push('/');
-    } catch (error) {
+      router.push('/');  // or router.back() if you want to return to the previous screen
+    } catch (error: any) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to save changes. Please try again.');
+      Alert.alert('Error', error.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setSavingProfile(false); // Hide the spinner
     }
+  };
+
+  // -------------- Handle "Return to Settings" or "Go Back" --------------
+  const handleGoBack = () => {
+    // If you have a specific route for "Settings", you can push that route
+    // e.g., router.push('/settings');
+    // Or simply go back to the previous screen:
+    router.back();
   };
 
   // -------------- Image Upload Handler --------------
   const handleImageUpload = async () => {
-    if (Platform.OS === 'web') {
-      // On web, the ImagePicker might not support camera fully
-      // But since we're handling "Choose from Gallery" separately, proceed
-    } else {
-      // Native platforms: Request media library permissions
+    if (Platform.OS !== 'web') {
       let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
       if (permissionResult.status !== 'granted') {
         Alert.alert('Permission Denied', 'Permission to access media library is required!');
         return;
       }
     }
 
-    // Launch image picker
     let pickerResult = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, // Allow user to crop the image
-      aspect: [1, 1], // Square aspect ratio
-      quality: 0.7, // Compress the image to 70% quality
-      base64: false, // We will handle the file
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      base64: false,
     });
 
-    // Debug: Log the pickerResult to understand its structure
     console.log('ImagePicker Result:', pickerResult);
 
-    // Handle response based on Expo SDK version
     if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
       const asset = pickerResult.assets[0];
       const { uri, fileName, mimeType } = asset;
-
-      console.log('Image Asset:', asset);
 
       if (!uri) {
         Alert.alert('Error', 'Failed to obtain image URI.');
         return;
       }
 
-      // Check if the URI is a data URL
+      // If it starts with data
       if (uri.startsWith('data:image/')) {
-        // Log the uri
-        console.log('Uploading as Base64:', uri);
-
         const formData = new FormData();
         formData.append('file', uri);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
@@ -241,7 +250,6 @@ export default function ProfileSettings() {
           });
 
           const data = await response.json();
-
           console.log('Cloudinary Upload Response:', data);
 
           if (data.secure_url) {
@@ -264,16 +272,11 @@ export default function ProfileSettings() {
         const match = /\.(\w+)$/.exec(filename);
         const type = mimeType || (match ? `image/${match[1]}` : `image`);
 
-        console.log('Extracted Filename:', filename);
-        console.log('Extracted MIME Type:', type);
-
-        // Ensure the filename has a valid extension
         if (!match && !mimeType) {
           Alert.alert('Error', 'Image must have a valid file extension (e.g., .jpg, .png).');
           return;
         }
 
-        // Create form data
         const formData = new FormData();
         formData.append('file', {
           uri,
@@ -281,9 +284,6 @@ export default function ProfileSettings() {
           type,
         });
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-
-        // Debug: Log the formData contents
-        console.log('FormData:', formData);
 
         setUploadingImage(true);
 
@@ -294,7 +294,6 @@ export default function ProfileSettings() {
           });
 
           const data = await response.json();
-
           console.log('Cloudinary Upload Response:', data);
 
           if (data.secure_url) {
@@ -313,7 +312,6 @@ export default function ProfileSettings() {
         }
       }
     } else {
-      // User canceled the picker
       console.log('ImagePicker canceled by user.');
     }
   };
@@ -321,48 +319,36 @@ export default function ProfileSettings() {
   // -------------- Upload Image via Camera --------------
   const handleTakePhoto = async () => {
     if (Platform.OS === 'web') {
-      // Web platform: Open the WebCamera modal
       setWebCameraVisible(true);
       return;
     }
 
-    // Native platforms: Request camera permissions
     let permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-
     if (permissionResult.status !== 'granted') {
       Alert.alert('Permission Denied', 'Permission to access camera is required!');
       return;
     }
 
-    // Launch camera
     let pickerResult = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, // Allow user to crop the image
-      aspect: [1, 1], // Square aspect ratio
-      quality: 0.7, // Compress the image to 70% quality
-      base64: false, // We will handle the file
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+      base64: false,
     });
 
-    // Debug: Log the pickerResult to understand its structure
     console.log('ImagePicker Result (Camera):', pickerResult);
 
-    // Handle response based on Expo SDK version
     if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
       const asset = pickerResult.assets[0];
       const { uri, fileName, mimeType } = asset;
-
-      console.log('Image Asset (Camera):', asset);
 
       if (!uri) {
         Alert.alert('Error', 'Failed to obtain image URI.');
         return;
       }
 
-      // Check if the URI is a data URL
       if (uri.startsWith('data:image/')) {
-        // Log the uri
-        console.log('Uploading as Base64 (Camera):', uri);
-
         const formData = new FormData();
         formData.append('file', uri);
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
@@ -376,7 +362,6 @@ export default function ProfileSettings() {
           });
 
           const data = await response.json();
-
           console.log('Cloudinary Upload Response (Camera):', data);
 
           if (data.secure_url) {
@@ -394,21 +379,15 @@ export default function ProfileSettings() {
           setUploadingImage(false);
         }
       } else {
-        // For file URIs
         const filename = fileName || uri.split('/').pop() || 'profile_picture';
         const match = /\.(\w+)$/.exec(filename);
         const type = mimeType || (match ? `image/${match[1]}` : `image`);
 
-        console.log('Extracted Filename:', filename);
-        console.log('Extracted MIME Type:', type);
-
-        // Ensure the filename has a valid extension
         if (!match && !mimeType) {
           Alert.alert('Error', 'Image must have a valid file extension (e.g., .jpg, .png).');
           return;
         }
 
-        // Create form data
         const formData = new FormData();
         formData.append('file', {
           uri,
@@ -416,9 +395,6 @@ export default function ProfileSettings() {
           type,
         });
         formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-
-        // Debug: Log the formData contents
-        console.log('FormData (Camera):', formData);
 
         setUploadingImage(true);
 
@@ -429,7 +405,6 @@ export default function ProfileSettings() {
           });
 
           const data = await response.json();
-
           console.log('Cloudinary Upload Response (Camera):', data);
 
           if (data.secure_url) {
@@ -448,7 +423,6 @@ export default function ProfileSettings() {
         }
       }
     } else {
-      // User canceled the camera
       console.log('ImagePicker (Camera) canceled by user.');
     }
   };
@@ -460,9 +434,6 @@ export default function ProfileSettings() {
 
   // -------------- Handle Web Camera Capture --------------
   const handleWebCapture = async (imageSrc: string) => {
-    // imageSrc is a base64 data URL
-    console.log('Captured Image from WebCamera:', imageSrc);
-
     setWebCameraVisible(false);
     setUploadingImage(true);
 
@@ -477,7 +448,6 @@ export default function ProfileSettings() {
       });
 
       const data = await response.json();
-
       console.log('Cloudinary Upload Response (Web):', data);
 
       if (data.secure_url) {
@@ -496,29 +466,31 @@ export default function ProfileSettings() {
     }
   };
 
-  // -------------- Handle Web Camera Cancel --------------
   const handleWebCancel = () => {
     setWebCameraVisible(false);
   };
 
   // ------------------ Main Render ------------------
-
-  // Define dynamic styles based on the theme
   const dynamicStyles = getStyles(isDarkTheme);
 
   if (pageLoading) {
     return (
       <View style={dynamicStyles.loadingContainer}>
-        <ActivityIndicator
-          size="large"
-          color={isDarkTheme ? '#BB9CED' : '#6D28D9'}
-        />
+        <ActivityIndicator size="large" color={isDarkTheme ? '#BB9CED' : '#6D28D9'} />
       </View>
     );
   }
 
   return (
     <View style={dynamicStyles.screenContainer}>
+      {/* Loading Overlay when saving profile */}
+      {savingProfile && (
+        <View style={dynamicStyles.savingOverlay}>
+          <ActivityIndicator size="large" color="#FFF" />
+          <Text style={dynamicStyles.savingOverlayText}>Saving Changes...</Text>
+        </View>
+      )}
+
       {/* Header Section */}
       <View style={dynamicStyles.headerSection}>
         <Text style={dynamicStyles.headerTitle}>Edit Profile</Text>
@@ -532,11 +504,9 @@ export default function ProfileSettings() {
           activeOpacity={0.7}
         >
           <Image source={{ uri: pfp }} style={dynamicStyles.profilePic} />
-          {/* Camera Icon Overlay */}
           <View style={dynamicStyles.cameraIconContainer}>
             <Ionicons name="camera" size={24} color="#fff" />
           </View>
-          {/* Loading Indicator */}
           {uploadingImage && (
             <View style={dynamicStyles.uploadOverlay}>
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -550,9 +520,7 @@ export default function ProfileSettings() {
         animationType="fade"
         transparent={true}
         visible={isModalVisible}
-        onRequestClose={() => {
-          setModalVisible(false);
-        }}
+        onRequestClose={() => setModalVisible(false)}
       >
         <Pressable style={dynamicStyles.modalOverlay} onPress={() => setModalVisible(false)}>
           <View style={dynamicStyles.modalContent}>
@@ -562,14 +530,18 @@ export default function ProfileSettings() {
               onPress={() => {
                 setModalVisible(false);
                 if (Platform.OS === 'web') {
-                  // Open WebCamera
                   setWebCameraVisible(true);
                 } else {
                   handleTakePhoto();
                 }
               }}
             >
-              <Ionicons name="camera" size={20} color={isDarkTheme ? '#fff' : '#333'} style={dynamicStyles.modalIcon} />
+              <Ionicons
+                name="camera"
+                size={20}
+                color={isDarkTheme ? '#fff' : '#333'}
+                style={dynamicStyles.modalIcon}
+              />
               <Text style={dynamicStyles.modalButtonText}>Take a Photo</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -579,14 +551,24 @@ export default function ProfileSettings() {
                 handleImageUpload();
               }}
             >
-              <Ionicons name="images" size={20} color={isDarkTheme ? '#fff' : '#333'} style={dynamicStyles.modalIcon} />
+              <Ionicons
+                name="images"
+                size={20}
+                color={isDarkTheme ? '#fff' : '#333'}
+                style={dynamicStyles.modalIcon}
+              />
               <Text style={dynamicStyles.modalButtonText}>Choose from Gallery</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[dynamicStyles.modalButton, dynamicStyles.cancelButton]}
               onPress={() => setModalVisible(false)}
             >
-              <Ionicons name="close-circle" size={20} color={isDarkTheme ? '#fff' : '#333'} style={dynamicStyles.modalIcon} />
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={isDarkTheme ? '#fff' : '#333'}
+                style={dynamicStyles.modalIcon}
+              />
               <Text style={dynamicStyles.modalButtonText}>Cancel</Text>
             </TouchableOpacity>
           </View>
@@ -598,16 +580,10 @@ export default function ProfileSettings() {
         animationType="slide"
         transparent={false}
         visible={isWebCameraVisible}
-        onRequestClose={() => {
-          setWebCameraVisible(false);
-        }}
+        onRequestClose={() => setWebCameraVisible(false)}
       >
         <View style={dynamicStyles.webCameraContainer}>
-          <WebCamera
-            onCapture={handleWebCapture}
-            onCancel={handleWebCancel}
-            isDarkTheme={isDarkTheme}
-          />
+          <WebCamera onCapture={handleWebCapture} onCancel={handleWebCancel} isDarkTheme={isDarkTheme} />
         </View>
       </Modal>
 
@@ -628,7 +604,7 @@ export default function ProfileSettings() {
           <Text style={dynamicStyles.inputLabel}>Username</Text>
           <TextInput
             style={dynamicStyles.textInput}
-            value={newUsername || username}
+            value={newUsername}
             onChangeText={(text) => setNewUsername(text)}
             placeholder="Enter your username"
             placeholderTextColor={isDarkTheme ? '#A1A1AA' : '#999'}
@@ -636,7 +612,7 @@ export default function ProfileSettings() {
         </View>
       </View>
 
-      {/* Bottom "Save Changes" Button */}
+      {/* Bottom Buttons: "Save Changes" and "Go Back" */}
       <View style={dynamicStyles.actionsSection}>
         <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
           <TouchableOpacity
@@ -645,10 +621,20 @@ export default function ProfileSettings() {
               animateButton();
               handleSave();
             }}
+            disabled={savingProfile} // Prevent double-tap
           >
             <Text style={dynamicStyles.saveButtonText}>Save Changes</Text>
           </TouchableOpacity>
         </Animated.View>
+
+        {/* Return to Main Settings / Go Back Button */}
+        <TouchableOpacity
+          style={dynamicStyles.backButton}
+          onPress={handleGoBack}
+          disabled={savingProfile}
+        >
+          <Text style={dynamicStyles.backButtonText}>Return to Settings</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -671,6 +657,24 @@ const getStyles = (isDarkTheme: boolean) =>
     screenContainer: {
       flex: 1,
       backgroundColor: isDarkTheme ? '#1F2937' : '#E9D5FF',
+    },
+
+    // Saving Overlay
+    savingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      zIndex: 10,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    savingOverlayText: {
+      color: '#FFF',
+      marginTop: 10,
+      fontSize: 16,
     },
 
     // ------------------ Header Section ------------------
@@ -706,7 +710,7 @@ const getStyles = (isDarkTheme: boolean) =>
       borderWidth: 3,
       borderColor: isDarkTheme ? '#BB9CED' : '#6D28D9',
       overflow: 'hidden',
-      position: 'relative', // Ensure positioning context
+      position: 'relative',
       backgroundColor: isDarkTheme ? '#374151' : '#FFFFFF',
     },
     profilePic: {
@@ -736,12 +740,12 @@ const getStyles = (isDarkTheme: boolean) =>
     // ------------------ Modal Styles ------------------
     modalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)', // Semi-transparent background
+      backgroundColor: 'rgba(0,0,0,0.5)',
       justifyContent: 'center',
       alignItems: 'center',
     },
     modalContent: {
-      width: Dimensions.get('window').width * 0.8, // 80% of screen width
+      width: Dimensions.get('window').width * 0.8,
       backgroundColor: isDarkTheme ? '#374151' : '#fff',
       borderRadius: 10,
       padding: 20,
@@ -821,10 +825,24 @@ const getStyles = (isDarkTheme: boolean) =>
       borderRadius: 8,
       paddingVertical: 14,
       alignItems: 'center',
+      marginBottom: 10, // Spacing before back button
     },
     saveButtonText: {
       color: '#fff',
       fontSize: 18,
       fontWeight: 'bold',
+    },
+    backButton: {
+      backgroundColor: isDarkTheme ? '#4B5563' : '#FFF',
+      borderWidth: 1,
+      borderColor: isDarkTheme ? '#BB9CED' : '#6D28D9',
+      borderRadius: 8,
+      paddingVertical: 14,
+      alignItems: 'center',
+    },
+    backButtonText: {
+      fontSize: 16,
+      color: isDarkTheme ? '#BB9CED' : '#6D28D9',
+      fontWeight: '600',
     },
   });

@@ -9,14 +9,16 @@ import {
   ActivityIndicator,
   FlatList,
   Alert,
-  Image, // Import Image for displaying profile pictures
+  Image,
+  Animated,
+  TouchableOpacity,
 } from 'react-native';
-import { UserContext } from '../app/UserContext'; // Access UserContext
+import { UserContext } from '../app/UserContext';
 import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
 import { useRouter } from 'expo-router';
-import TweetModal from './tweetpage'; // Correct import path
-import ArticleModal from './articlepage'; // Correct import path
+import TweetModal from './tweetpage';
+import ArticleModal from './articlepage';
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 
@@ -30,26 +32,25 @@ interface ApiResponse<T> {
 
 interface SearchResult {
   type: 'article' | 'tweet';
-  content_id: string; // Changed from 'id' to 'content_id' for consistency
+  content_id: string;
   time: string;
   username: string;
   shared_at: string;
   content_type: 'article' | 'tweet';
   content_data?: ArticleData | TweetData;
+  profile_picture?: string;
 }
 
 interface ArticleData {
   id: number;
   headline: string;
   content: string;
-  // Add other relevant fields
 }
 
 interface TweetData {
   Tweet_Link: string;
   Tweet: string;
   Created_At: string;
-  // Add other relevant fields
 }
 
 const RepostFeedPage: React.FC = () => {
@@ -58,7 +59,7 @@ const RepostFeedPage: React.FC = () => {
   const [username, setUsername] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { userToken, setUserToken, isDarkTheme } = useContext(UserContext); // Consume isDarkTheme from context
+  const { userToken, isDarkTheme } = useContext(UserContext);
   const router = useRouter();
 
   // Modal states
@@ -67,21 +68,26 @@ const RepostFeedPage: React.FC = () => {
   const [articleModalVisible, setArticleModalVisible] = useState<boolean>(false);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
 
-  // Helper function to fetch profile picture by username
-  const fetchUserProfilePicture = async (username: string): Promise<string> => {
-    try {
-      const response = await fetch(`${domaindynamo}/get-profile-picture?username=${encodeURIComponent(username)}`);
-      const data = await response.json();
+  // Get dynamic styles based on theme
+  const styles = getStyles(isDarkTheme);
 
+  // Helper to fetch profile picture
+  const fetchUserProfilePicture = async (user: string): Promise<string> => {
+    try {
+      const response = await fetch(
+        `${domaindynamo}/get-profile-picture?username=${encodeURIComponent(user)}`
+      );
+      const data = await response.json();
+      console.log(`Fetched profile picture for ${user}:`, data);
       if (data.status === 'Success' && data.profile_picture) {
         return data.profile_picture;
       } else {
-        console.warn(`No profile picture found for username: ${username}. Using default.`);
-        return 'https://via.placeholder.com/50?text=User'; // Default profile picture
+        console.warn(`No profile picture for ${user}. Using default.`);
+        return 'https://via.placeholder.com/50?text=User';
       }
     } catch (error) {
-      console.error(`Error fetching profile picture for ${username}:`, error);
-      return 'https://via.placeholder.com/50?text=User'; // Default profile picture on error
+      console.error(`Error fetching profile picture for ${user}:`, error);
+      return 'https://via.placeholder.com/50?text=User';
     }
   };
 
@@ -89,23 +95,22 @@ const RepostFeedPage: React.FC = () => {
     const fetchProfile = async () => {
       if (!userToken) {
         setUsername('Guest');
-        await fetchSharedContent('Guest'); // If userToken not present, consider guest logic if backend allows
+        await fetchSharedContent('Guest');
         return;
       }
       try {
-        // Fetch username from token
         const usernameResponse = await fetch(`${domaindynamo}/get-username`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: userToken }),
         });
         const usernameData = await usernameResponse.json();
+        console.log('Username fetched:', usernameData);
         const currentUsername =
           usernameData.status === 'Success' && usernameData.username
             ? usernameData.username
             : 'Guest';
         setUsername(currentUsername);
-
         await fetchSharedContent(currentUsername);
       } catch (err) {
         console.error('Error fetching username:', err);
@@ -117,38 +122,32 @@ const RepostFeedPage: React.FC = () => {
     fetchProfile();
   }, [userToken]);
 
-  const fetchSharedContent = async (username: string) => {
+  const fetchSharedContent = async (user: string) => {
     try {
+      console.log(`Fetching shared content for ${user}...`);
       const response = await fetch(`${domaindynamo}/get_shared_content`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ follower_username: username }),
+        body: JSON.stringify({ follower_username: user }),
       });
-
       if (!response.ok) {
         throw new Error(`Error: failed to fetch ${response.statusText}`);
       }
-
       const data = await response.json();
+      console.log('Raw shared content data:', data);
       if (!data.shared_content) {
         throw new Error('Shared content not found');
       }
-
-      console.log('Shared Content:', data.shared_content);
-
       if (data.shared_content.length === 0) {
-        // No shared content found, do not set error
         setSharedContent([]);
         setError(null);
         setLoading(false);
         return;
       }
-
+      // Enhance each shared item with profile picture and detailed content
       const detailedContent = await Promise.all(
         data.shared_content.map(async (item: any) => {
-          // Fetch profile picture for the user who shared the content
           const profile_picture = await fetchUserProfilePicture(item.username);
-
           if (item.content_type === 'article') {
             const articleData = await fetchArticleContent(item.content_id);
             return { ...item, content_data: articleData || null, profile_picture };
@@ -159,8 +158,7 @@ const RepostFeedPage: React.FC = () => {
           return { ...item, profile_picture };
         })
       );
-
-      console.log('Detailed Content with Profile Pictures:', detailedContent);
+      console.log('Detailed shared content:', detailedContent);
       setSharedContent(detailedContent);
     } catch (err: any) {
       console.error('Error fetching shared content:', err);
@@ -177,19 +175,15 @@ const RepostFeedPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
-
       if (!response.ok)
         throw new Error(`Error fetching article: ${response.statusText}`);
-
       const data = await response.json();
-
       if (data.status === 'Error')
         throw new Error(data.error || 'Failed to fetch article content');
-
-      return data.data; // The article data
+      return data.data;
     } catch (error: any) {
       console.error(`Error in fetchArticleContent: ${error.message}`);
-      return null; // Return null to handle gracefully
+      return null;
     }
   };
 
@@ -200,30 +194,23 @@ const RepostFeedPage: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ link }),
       });
-
       if (!response.ok)
         throw new Error(`Error fetching tweet: ${response.statusText}`);
-
       const data = await response.json();
-
       if (data.status === 'Error')
         throw new Error(data.error || 'Failed to fetch tweet content');
-
-      return data.data; // The tweet data
+      return data.data;
     } catch (error: any) {
       console.error(`Error in fetchTweetContent: ${error.message}`);
-      return null; // Return null to handle gracefully
+      return null;
     }
   };
 
-  // Modify handleArticlePress and handleTweetPress to open modals with id and link
   const handleArticlePress = (articleData: ArticleData) => {
     if (!userToken) {
       Alert.alert('Error', 'You must be logged in to view articles.');
       return;
     }
-
-    // Open ArticleModal with the article ID
     setSelectedArticleId(articleData.id.toString());
     setArticleModalVisible(true);
   };
@@ -233,16 +220,14 @@ const RepostFeedPage: React.FC = () => {
       Alert.alert('Error', 'You must be logged in to view tweets.');
       return;
     }
-
-    // Open TweetModal with the tweet link
     setSelectedTweetLink(tweetData.Tweet_Link);
     setTweetModalVisible(true);
   };
 
   const renderContentCard = ({ item }: { item: SearchResult }) => {
-    console.log('Rendering Item:', item);
+    console.log('Rendering shared item:', item);
     if (!item.content_data) {
-      console.warn('No content_data for item:', item);
+      console.warn('Missing content_data for item:', item);
       return (
         <View
           style={[
@@ -261,27 +246,21 @@ const RepostFeedPage: React.FC = () => {
         </View>
       );
     }
-
-    // Display who it was shared by and when
     const sharedByUsername = item.username || 'Unknown User';
-    const sharedAt = new Date(item.shared_at).toLocaleString(); // format if needed
-
+    const sharedAt = new Date(item.shared_at).toLocaleString();
     return (
       <View
         style={[
           styles.sharedContentContainer,
-          { backgroundColor: isDarkTheme ? '#1F2937' : '#FFFFFF' },
+          { backgroundColor: isDarkTheme ? '#0F0F0F' : '#FFFFFF' },
         ]}
       >
-        {/* User Info Section */}
         <View style={styles.userInfoContainer}>
           <Image
             source={{ uri: item.profile_picture }}
             style={[
               styles.profilePicture,
-              {
-                borderColor: isDarkTheme ? '#BB9CED' : '#6D28D9',
-              },
+              { borderColor: isDarkTheme ? '#BB9CED' : '#6D28D9' },
             ]}
             accessibilityLabel={`${sharedByUsername}'s profile picture`}
           />
@@ -304,19 +283,17 @@ const RepostFeedPage: React.FC = () => {
             </Text>
           </View>
         </View>
-
-        {/* Content Card */}
         {item.content_type === 'article' ? (
           <ArticleCard
             item={item.content_data}
             onPress={() => handleArticlePress(item.content_data as ArticleData)}
-            isDarkTheme={isDarkTheme} // Pass theme prop if needed
+            isDarkTheme={isDarkTheme}
           />
         ) : item.content_type === 'tweet' ? (
           <TweetCard
             item={item.content_data}
             onPress={() => handleTweetPress(item.content_data as TweetData)}
-            isDarkTheme={isDarkTheme} // Pass theme prop if needed
+            isDarkTheme={isDarkTheme}
           />
         ) : null}
       </View>
@@ -328,16 +305,11 @@ const RepostFeedPage: React.FC = () => {
       <View
         style={[
           styles.centered,
-          { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' },
+          { backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' },
         ]}
       >
         <ActivityIndicator size="large" color="#6C63FF" />
-        <Text
-          style={[
-            styles.loadingText,
-            { color: isDarkTheme ? '#D1D5DB' : '#888888' },
-          ]}
-        >
+        <Text style={[styles.loadingText, { color: isDarkTheme ? '#D1D5DB' : '#888888' }]}>
           Loading...
         </Text>
       </View>
@@ -345,40 +317,26 @@ const RepostFeedPage: React.FC = () => {
   }
 
   return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' },
-      ]}
-    >
+    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }]}>
       <FlatList
         data={sharedContent}
         renderItem={renderContentCard}
         keyExtractor={(item, index) => `${item.content_id}-${index}`}
         contentContainerStyle={styles.contentContainer}
         ListEmptyComponent={
-          <Text
-            style={[
-              styles.noContent,
-              { color: isDarkTheme ? '#D1D5DB' : '#555555' },
-            ]}
-          >
+          <Text style={[styles.noContent, { color: isDarkTheme ? '#D1D5DB' : '#555555' }]}>
             No content found.
           </Text>
         }
         accessible={true}
         accessibilityLabel="List of shared content"
-        style={{ backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }}
+        style={{ backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }}
       />
-
-      {/* Render the ArticleModal */}
       <ArticleModal
         visible={articleModalVisible}
         onClose={() => setArticleModalVisible(false)}
         articleId={selectedArticleId}
       />
-
-      {/* Render the TweetModal */}
       <TweetModal
         visible={tweetModalVisible}
         onClose={() => setTweetModalVisible(false)}
@@ -391,76 +349,69 @@ const RepostFeedPage: React.FC = () => {
 export default RepostFeedPage;
 
 // ------------------------------------------------------
-// STYLES
+// Dynamic STYLES
 // ------------------------------------------------------
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    position: 'relative', // Ensure that absolutely positioned children are relative to this container
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#888888', // Will be overridden dynamically
-  },
-  errorText: {
-    fontSize: 18,
-    color: 'red', // Will be overridden dynamically
-  },
-  noContent: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#555555', // Will be overridden dynamically
-    marginTop: 20,
-  },
-  contentContainer: {
-    padding: 20,
-  },
-  missingContent: {
-    padding: 20,
-    backgroundColor: '#FFEAEA', // Light red background for missing content
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  missingContentText: {
-    color: '#AA0000', // Dark red text for missing content
-    textAlign: 'center',
-  },
-  sharedContentContainer: {
-    marginBottom: 20,
-    padding: 15,
-    borderRadius: 8,
-    // Background color handled dynamically
-  },
-  sharedInfo: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#555555', // Default gray, overridden dynamically
-  },
-  sharedTimestamp: {
-    fontSize: 12,
-    color: '#555555', // Default gray, overridden dynamically
-  },
-  // ------------------ User Info Section ------------------
-  userInfoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  profilePicture: {
-    width: 40, // Adjust size as needed
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
-    borderWidth: 1,
-    // borderColor set dynamically in the component
-  },
-  userTextContainer: {
-    flexDirection: 'column',
-  },
-});
+const getStyles = (isDarkTheme: boolean) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: isDarkTheme ? '#121212' : '#F4F7FA',
+      position: 'relative',
+    },
+    centered: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    loadingText: {
+      marginTop: 10,
+      fontSize: 16,
+    },
+    errorText: {
+      fontSize: 18,
+      color: 'red',
+    },
+    noContent: {
+      textAlign: 'center',
+      fontSize: 16,
+      marginTop: 20,
+    },
+    contentContainer: {
+      padding: 20,
+    },
+    missingContent: {
+      padding: 20,
+      borderRadius: 10,
+      marginBottom: 10,
+    },
+    missingContentText: {
+      textAlign: 'center',
+    },
+    sharedContentContainer: {
+      marginBottom: 20,
+      padding: 15,
+      borderRadius: 8,
+    },
+    sharedInfo: {
+      fontSize: 16,
+      fontWeight: 'bold',
+    },
+    sharedTimestamp: {
+      fontSize: 12,
+    },
+    userInfoContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    profilePicture: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      borderWidth: 1,
+    },
+    userTextContainer: {
+      flexDirection: 'column',
+      marginLeft: 10,
+    },
+  });

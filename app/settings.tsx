@@ -17,13 +17,12 @@ import { UserContext } from './UserContext'; // Adjust the path if necessary
 import BackButton from '../components/ui/BackButton';
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
-// or your actual server URL
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { userToken, setUserToken, isDarkTheme, toggleTheme } = useContext(UserContext);
 
-  // ------------------ Loading State ------------------
+  // Loading state
   const [pageLoading, setPageLoading] = useState(true);
 
   // Basic user info
@@ -38,23 +37,20 @@ export default function SettingsScreen() {
   useEffect(() => {
     const fetchUsernameAndProfile = async () => {
       if (!userToken) {
-        // Not logged in: set defaults
         setUsername('Guest');
         setFullName('Guest');
         setProfilePicture(null);
         setPageLoading(false);
         return;
       }
-
       try {
-        // 1) Get username from Netlify function
+        // 1) Get username
         const response = await fetch(`${domaindynamo}/get-username`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: userToken }),
         });
         const data = await response.json();
-
         if (data.status === 'Success' && data.username) {
           setUsername(data.username);
 
@@ -64,7 +60,7 @@ export default function SettingsScreen() {
           );
           const fullNameData = await fullNameRes.json();
           if (fullNameData.status === 'Success') {
-            setFullName(fullNameData.full_name);
+            setFullName(fullNameData.full_name || 'Unknown');
           } else {
             setFullName('Unknown');
           }
@@ -80,7 +76,6 @@ export default function SettingsScreen() {
             setProfilePicture(null);
           }
         } else {
-          // Fallback
           setUsername('Guest');
           setFullName('Guest');
           setProfilePicture(null);
@@ -105,8 +100,7 @@ export default function SettingsScreen() {
 
   // ------------------ Logout ------------------
   const handleLogout = () => {
-    setUserToken(null); // Clear the user token
-    // Navigation is handled by useEffect
+    setUserToken(null);
   };
 
   // ------------------ Delete and Logout ------------------
@@ -115,7 +109,6 @@ export default function SettingsScreen() {
     if (!deletionSuccess) {
       Alert.alert('Error', 'Account deletion failed. Please try again.');
     }
-    // Navigation is handled by useEffect if deletionSuccess is true
   };
 
   // ------------------ Delete Account ------------------
@@ -132,8 +125,7 @@ export default function SettingsScreen() {
       });
       if (response.ok) {
         console.log(`Deleting account for: ${username}`);
-        setUserToken(null); // Update userToken first
-        // Navigation is handled by useEffect
+        setUserToken(null);
         return true;
       } else {
         const errorData = await response.json();
@@ -151,11 +143,7 @@ export default function SettingsScreen() {
   const confirmDeletion = () => {
     if (!username) return;
     if (Platform.OS === 'web') {
-      if (
-        confirm(
-          'Are you sure you want to permanently delete your account? This action cannot be undone.'
-        )
-      ) {
+      if (confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) {
         handleDeleteAndLogout();
       }
     } else {
@@ -177,7 +165,6 @@ export default function SettingsScreen() {
     if (!deactivationSuccess) {
       Alert.alert('Error', 'Account deactivation failed. Please try again.');
     }
-    // Navigation is handled by useEffect if deactivationSuccess is true
   };
 
   // ------------------ Deactivate Account ------------------
@@ -194,8 +181,7 @@ export default function SettingsScreen() {
       });
       if (response.ok) {
         console.log(`Deactivating account for: ${username}`);
-        setUserToken(null); // Update userToken first
-        // Navigation is handled by useEffect
+        setUserToken(null);
         return true;
       } else {
         const errorData = await response.json();
@@ -213,11 +199,7 @@ export default function SettingsScreen() {
   const confirmDeactivation = () => {
     if (!username) return;
     if (Platform.OS === 'web') {
-      if (
-        confirm(
-          'Are you sure you want to deactivate your account? You can reactivate it later.'
-        )
-      ) {
+      if (confirm('Are you sure you want to deactivate your account? You can reactivate it later.')) {
         handleDeactivateAndLogout();
       }
     } else {
@@ -237,9 +219,6 @@ export default function SettingsScreen() {
   const handleEditProfile = () => router.push('/editprofile');
   const handleEditPreferences = () => router.push('/preferences');
 
-  // ------------------ Render ------------------
-
-  // Define dynamic styles based on the theme
   const dynamicStyles = getStyles(isDarkTheme);
 
   if (pageLoading) {
@@ -252,11 +231,9 @@ export default function SettingsScreen() {
 
   return (
     <View style={dynamicStyles.container}>
-      {/* Top Section: "Back" button + big header */}
+      {/* Top Section */}
       <View style={dynamicStyles.headerSection}>
         <BackButton />
-
-        {/* Profile Info */}
         <View style={dynamicStyles.profileInfo}>
           <View style={dynamicStyles.profilePicContainer}>
             <Image
@@ -264,7 +241,7 @@ export default function SettingsScreen() {
               source={
                 profilePicture
                   ? { uri: profilePicture }
-                  : require('../assets/images/logo.png') // Ensure this path is correct
+                  : require('../assets/images/logo.png')
               }
             />
           </View>
@@ -275,7 +252,6 @@ export default function SettingsScreen() {
 
       {/* Middle Section: Toggles */}
       <View style={dynamicStyles.togglesSection}>
-        {/* Push Notifications */}
         <View style={dynamicStyles.toggleRow}>
           <View style={dynamicStyles.labelRow}>
             <Ionicons name="notifications-outline" size={20} color={isDarkTheme ? '#BB9CED' : '#6D28D9'} />
@@ -288,8 +264,6 @@ export default function SettingsScreen() {
             trackColor={{ false: '#767577', true: isDarkTheme ? '#BB9CED' : '#6D28D9' }}
           />
         </View>
-
-        {/* Dark Mode */}
         <View style={dynamicStyles.toggleRow}>
           <View style={dynamicStyles.labelRow}>
             <Ionicons name="moon-outline" size={20} color={isDarkTheme ? '#BB9CED' : '#6D28D9'} />
@@ -302,67 +276,30 @@ export default function SettingsScreen() {
             trackColor={{ false: '#767577', true: '#BB9CED' }}
           />
         </View>
-
-        {/* Buttons: Edit Profile + Edit Preferences */}
         <View style={dynamicStyles.buttonRow}>
           <TouchableOpacity style={dynamicStyles.outlineButton} onPress={handleEditProfile}>
-            <Ionicons
-              name="person-outline"
-              size={16}
-              color={isDarkTheme ? '#BB9CED' : '#6D28D9'}
-              style={dynamicStyles.iconMargin}
-            />
+            <Ionicons name="person-outline" size={16} color={isDarkTheme ? '#BB9CED' : '#6D28D9'} style={dynamicStyles.iconMargin} />
             <Text style={[dynamicStyles.outlineButtonText, { color: isDarkTheme ? '#BB9CED' : '#6D28D9' }]}>Edit Profile</Text>
           </TouchableOpacity>
-
           <TouchableOpacity style={dynamicStyles.outlineButton} onPress={handleEditPreferences}>
-            <Ionicons
-              name="settings-outline"
-              size={16}
-              color={isDarkTheme ? '#BB9CED' : '#6D28D9'}
-              style={dynamicStyles.iconMargin}
-            />
-            <Text style={[dynamicStyles.outlineButtonText, { color: isDarkTheme ? '#BB9CED' : '#6D28D9' }]}>
-              Edit Preferences
-            </Text>
+            <Ionicons name="settings-outline" size={16} color={isDarkTheme ? '#BB9CED' : '#6D28D9'} style={dynamicStyles.iconMargin} />
+            <Text style={[dynamicStyles.outlineButtonText, { color: isDarkTheme ? '#BB9CED' : '#6D28D9' }]}>Edit Preferences</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Bottom Section: Action Buttons (Logout, Deactivate, Delete) */}
+      {/* Bottom Section: Action Buttons */}
       <View style={dynamicStyles.actionsSection}>
-        {/* Logout */}
         <TouchableOpacity style={dynamicStyles.actionButton} onPress={handleLogout}>
-          <Ionicons
-            name="log-out-outline"
-            size={16}
-            color={isDarkTheme ? '#BB9CED' : '#6D28D9'}
-            style={dynamicStyles.iconMargin}
-          />
+          <Ionicons name="log-out-outline" size={16} color={isDarkTheme ? '#BB9CED' : '#6D28D9'} style={dynamicStyles.iconMargin} />
           <Text style={[dynamicStyles.actionButtonText, { color: isDarkTheme ? '#BB9CED' : '#6D28D9' }]}>Logout</Text>
         </TouchableOpacity>
-
-        {/* Deactivate Account */}
         <TouchableOpacity style={dynamicStyles.destructiveButton} onPress={confirmDeactivation}>
-          <Ionicons
-            name="person-remove-outline"
-            size={16}
-            color="#DC2626"
-            style={dynamicStyles.iconMargin}
-          />
-          <Text style={[dynamicStyles.actionButtonText, { color: '#DC2626' }]}>
-            Deactivate Account
-          </Text>
+          <Ionicons name="person-remove-outline" size={16} color="#DC2626" style={dynamicStyles.iconMargin} />
+          <Text style={[dynamicStyles.actionButtonText, { color: '#DC2626' }]}>Deactivate Account</Text>
         </TouchableOpacity>
-
-        {/* Delete Account */}
         <TouchableOpacity style={dynamicStyles.destructiveButton} onPress={confirmDeletion}>
-          <Ionicons
-            name="trash-outline"
-            size={16}
-            color="#DC2626"
-            style={dynamicStyles.iconMargin}
-          />
+          <Ionicons name="trash-outline" size={16} color="#DC2626" style={dynamicStyles.iconMargin} />
           <Text style={[dynamicStyles.actionButtonText, { color: '#DC2626' }]}>Delete Account</Text>
         </TouchableOpacity>
       </View>
@@ -370,33 +307,36 @@ export default function SettingsScreen() {
   );
 }
 
-// --------------------------------------------------
-// DYNAMIC STYLES BASED ON THEME
-// --------------------------------------------------
+export default SettingsScreen;
+
 const getStyles = (isDarkTheme: boolean) =>
   StyleSheet.create({
     // Loading Screen
     loadingContainer: {
       flex: 1,
-      backgroundColor: isDarkTheme ? '#1F2937' : '#E9D5FF',
+      backgroundColor: isDarkTheme ? '#121212' : '#E9D5FF',
       justifyContent: 'center',
       alignItems: 'center',
     },
-
     // Main Container
     container: {
       flex: 1,
-      backgroundColor: isDarkTheme ? '#1F2937' : '#E9D5FF', // Dynamic background
+      backgroundColor: isDarkTheme ? '#121212' : '#E9D5FF',
     },
-
-    // ------------------ Header Section ------------------
+    // Header Section
     headerSection: {
-      paddingTop: Platform.OS === 'ios' ? 50 : 30, // Extra top padding if needed
-      paddingHorizontal: 16,
+      paddingTop: Platform.OS === 'ios' ? 50 : 30,
       paddingBottom: 20,
-      backgroundColor: isDarkTheme ? '#374151' : '#6D28D9', // Dynamic header background
+      paddingHorizontal: 16,
+      backgroundColor: isDarkTheme ? '#121212' : '#6D28D9',
       borderBottomLeftRadius: 20,
       borderBottomRightRadius: 20,
+    },
+    headerTitle: {
+      color: '#fff',
+      fontSize: 24,
+      fontWeight: 'bold',
+      textAlign: 'center',
     },
     profileInfo: {
       marginTop: 10,
@@ -406,7 +346,7 @@ const getStyles = (isDarkTheme: boolean) =>
       width: 88,
       height: 88,
       borderRadius: 44,
-      backgroundColor: isDarkTheme ? '#4B5563' : '#D8B4FE',
+      backgroundColor: isDarkTheme ? '#121212' : '#D8B4FE',
       overflow: 'hidden',
       marginBottom: 10,
     },
@@ -425,8 +365,7 @@ const getStyles = (isDarkTheme: boolean) =>
       fontSize: 14,
       color: isDarkTheme ? '#9CA3AF' : '#E9D5FF',
     },
-
-    // ------------------ Toggles Section ------------------
+    // Toggles Section
     togglesSection: {
       marginTop: 20,
       paddingHorizontal: 16,
@@ -435,7 +374,7 @@ const getStyles = (isDarkTheme: boolean) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      backgroundColor: isDarkTheme ? '#374151' : '#FFFFFF',
+      backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF',
       borderRadius: 12,
       paddingVertical: 12,
       paddingHorizontal: 16,
@@ -463,7 +402,7 @@ const getStyles = (isDarkTheme: boolean) =>
       borderRadius: 8,
       paddingVertical: 10,
       paddingHorizontal: 12,
-      backgroundColor: isDarkTheme ? '#374151' : '#FFFFFF',
+      backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF',
       justifyContent: 'center',
       marginRight: 8,
     },
@@ -474,17 +413,18 @@ const getStyles = (isDarkTheme: boolean) =>
     iconMargin: {
       marginRight: 4,
     },
-
-    // ------------------ Actions Section ------------------
+    // Actions Section
     actionsSection: {
+      marginTop: 20,
+      paddingHorizontal: 16,
       flex: 1,
       justifyContent: 'flex-end',
-      padding: 16,
+      paddingBottom: 20,
     },
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: isDarkTheme ? '#4B5563' : '#F3E8FF',
+      backgroundColor: isDarkTheme ? '#121212' : '#F3E8FF',
       borderRadius: 8,
       paddingVertical: 12,
       paddingHorizontal: 16,
@@ -494,7 +434,7 @@ const getStyles = (isDarkTheme: boolean) =>
     destructiveButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: isDarkTheme ? '#991B1B' : '#FEE2E2',
+      backgroundColor: isDarkTheme ? '#121212' : '#FEE2E2',
       borderRadius: 8,
       paddingVertical: 12,
       paddingHorizontal: 16,

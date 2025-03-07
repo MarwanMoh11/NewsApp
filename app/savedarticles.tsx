@@ -16,7 +16,6 @@ import { useRouter } from 'expo-router';
 import { UserContext } from '../app/UserContext'; // Adjust the import path as necessary
 import TweetCard from '../components/TweetCard';
 import ArticleCard from '../components/ArticleCard';
-import BackButton from '../components/ui/BackButton';
 import TweetModal from './tweetpage'; // Import the TweetModal component
 import ArticleModal from './articlepage'; // Import the ArticleModal component
 
@@ -91,7 +90,7 @@ const SavedArticles: React.FC = () => {
       const response = await fetch(`${domaindynamo}/show-saved`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username }), // backend should decode username
+        body: JSON.stringify({ username: username }),
       });
 
       const textResponse = await response.clone().text();
@@ -135,10 +134,10 @@ const SavedArticles: React.FC = () => {
 
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch article content');
 
-      return data.data; // The article data
+      return data.data;
     } catch (error: any) {
       console.error(`Error in fetchArticleContent: ${error.message}`);
-      return null; // Return null to handle gracefully
+      return null;
     }
   };
 
@@ -156,23 +155,19 @@ const SavedArticles: React.FC = () => {
 
       if (data.status === 'Error') throw new Error(data.error || 'Failed to fetch tweet content');
 
-      return data.data; // The tweet data
+      return data.data;
     } catch (error: any) {
       console.error(`Error in fetchTweetContent: ${error.message}`);
-      return null; // Return null to handle gracefully
+      return null;
     }
   };
 
-  // Remove handleContentPressLive as it's redundant
-  // Modify handleContentPress to open the modal for tweets and articles
   const handleContentPress = (item: any) => {
     if (item.type === 'tweet') {
       if (!userToken) {
         Alert.alert('Error', 'You must be logged in to view tweets.');
         return;
       }
-
-      // Open TweetModal with the tweet link
       setSelectedTweetLink(item.content_data?.Tweet_Link || null);
       if (item.content_data?.Tweet_Link) {
         setTweetModalVisible(true);
@@ -184,8 +179,6 @@ const SavedArticles: React.FC = () => {
         Alert.alert('Error', 'You must be logged in to view articles.');
         return;
       }
-
-      // Open ArticleModal with the article ID
       setSelectedArticleId(item.content_data?.id || null);
       if (item.content_data?.id) {
         setArticleModalVisible(true);
@@ -208,21 +201,18 @@ const SavedArticles: React.FC = () => {
       return (
         <TweetCard
           item={item.content_data}
-          onPress={() => handleContentPress(item)} // Pass the item to handleContentPress
+          onPress={() => handleContentPress(item)}
         />
       );
     }
     return null;
   };
 
-  // Handle scroll to show/hide the button
   const handleScroll = (event: any) => {
     const currentOffset = event.nativeEvent.contentOffset.y;
     if (currentOffset > lastOffset.current && currentOffset > 50) {
-      // Scrolling Down
       if (showButton) setShowButton(false);
     } else if (currentOffset < lastOffset.current) {
-      // Scrolling Up
       if (!showButton) setShowButton(true);
     }
     lastOffset.current = currentOffset;
@@ -230,7 +220,7 @@ const SavedArticles: React.FC = () => {
 
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
+      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }]}>
         <ActivityIndicator size="large" color="#6C63FF" />
         <Text style={[styles.loadingText, { color: isDarkTheme ? '#D1D5DB' : '#888' }]}>Loading...</Text>
       </View>
@@ -239,17 +229,16 @@ const SavedArticles: React.FC = () => {
 
   if (error) {
     return (
-      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
+      <View style={[styles.centered, { backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }]}>
         <Text style={[styles.errorText, { color: isDarkTheme ? '#F87171' : 'red' }]}>Error: {error}</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }]}>
+    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }]}>
       {/* Header with Back Button and "Saved Articles" Title */}
       <View style={[styles.header, { borderBottomColor: isDarkTheme ? '#374151' : '#E0E0E0' }]}>
-        <BackButton />
         <Text style={[styles.headerTitle, { color: isDarkTheme ? '#F3F4F6' : '#333333' }]}>Saved Articles</Text>
       </View>
 
@@ -267,23 +256,14 @@ const SavedArticles: React.FC = () => {
             </Text>
           </View>
         }
-        // Adjust FlatList background based on theme
-        style={{ backgroundColor: isDarkTheme ? '#111827' : '#FFFFFF' }}
+        style={{ backgroundColor: isDarkTheme ? '#121212' : '#FFFFFF' }}
       />
 
       {/* Render the ArticleModal */}
-      <ArticleModal
-        visible={articleModalVisible}
-        onClose={() => setArticleModalVisible(false)}
-        articleId={selectedArticleId}
-      />
+      <ArticleModal visible={articleModalVisible} onClose={() => setArticleModalVisible(false)} articleId={selectedArticleId} />
 
       {/* Render the TweetModal */}
-      <TweetModal
-        visible={tweetModalVisible}
-        onClose={() => setTweetModalVisible(false)}
-        tweetLink={selectedTweetLink}
-      />
+      <TweetModal visible={tweetModalVisible} onClose={() => setTweetModalVisible(false)} tweetLink={selectedTweetLink} />
     </View>
   );
 };
@@ -296,7 +276,7 @@ export default SavedArticles;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    position: 'relative', // Ensure that absolutely positioned children are relative to this container
+    position: 'relative', // Ensures absolutely positioned children are relative to this container
   },
   centered: {
     flex: 1,
