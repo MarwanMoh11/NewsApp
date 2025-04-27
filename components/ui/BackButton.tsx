@@ -1,6 +1,4 @@
-// ------------------------------------------------------
-// components/BackButton.tsx
-// ------------------------------------------------------
+// components/ui/BackButton.tsx
 import React, { useContext } from 'react';
 import {
   TouchableOpacity,
@@ -8,18 +6,20 @@ import {
   Platform,
   StyleProp,
   ViewStyle,
+  View, // Import View for potential layout adjustments if needed
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
-import { UserContext } from '../../app/UserContext'; // Import UserContext
+import { UserContext } from '../../app/UserContext'; // Adjust path if necessary
 
 interface BackButtonProps {
-  topOffset?: number; // Optional prop to adjust the top position
   style?: StyleProp<ViewStyle>; // Optional prop to allow additional style overrides
+  // topOffset prop is removed as absolute positioning is removed
+  onPress?: () => void; // Optional custom onPress handler
 }
 
-const BackButton: React.FC<BackButtonProps> = ({ topOffset = 0, style }) => {
+const BackButton: React.FC<BackButtonProps> = ({ style, onPress }) => {
   const router = useRouter();
   const navigation = useNavigation();
 
@@ -27,20 +27,31 @@ const BackButton: React.FC<BackButtonProps> = ({ topOffset = 0, style }) => {
   const { isDarkTheme } = useContext(UserContext);
 
   const handlePress = () => {
+    // If a custom onPress handler is provided, use it
+    if (onPress) {
+      onPress();
+      return;
+    }
+
+    // Default navigation logic
     if (navigation.canGoBack()) {
+      console.log('BackButton: Navigating back using navigation.goBack()');
       navigation.goBack();
     } else {
-      router.push('/'); // Navigate to Home if no back history
+      console.log('BackButton: Cannot go back, navigating to "/" using router.push()');
+      // Fallback to a specific route if navigation stack is empty (e.g., navigating from a deep link)
+      router.push('/'); // Navigate to Home or another appropriate default route
     }
   };
+
+  // Determine icon color based on theme
+  const iconColor = isDarkTheme ? '#E5E7EB' : '#1F2937'; // Using common text colors
 
   return (
     <TouchableOpacity
       style={[
-        styles.backButton,
-        { top: Platform.OS === 'web' ? 20 + topOffset : 60 + topOffset }, // Apply topOffset
-        style, // Allow additional style overrides
-        isDarkTheme ? styles.darkBackground : styles.lightBackground, // Apply background based on theme
+        styles.backButton, // Base styles
+        style, // Allow additional style overrides from props
       ]}
       onPress={handlePress}
       accessible={true}
@@ -48,9 +59,9 @@ const BackButton: React.FC<BackButtonProps> = ({ topOffset = 0, style }) => {
       accessibilityLabel="Go back"
     >
       <Icon
-        name="arrow-back"
+        name="arrow-back-outline" // Using outline variant for consistency
         size={24}
-        color={isDarkTheme ? '#F3F4F6' : '#000000'} // Dynamic icon color based on theme
+        color={iconColor}
       />
     </TouchableOpacity>
   );
@@ -58,24 +69,17 @@ const BackButton: React.FC<BackButtonProps> = ({ topOffset = 0, style }) => {
 
 const styles = StyleSheet.create({
   backButton: {
-    position: 'absolute',
-    left: 20,
-    zIndex: 10,
-    padding: 8, // Increase touch area for better accessibility
-    borderRadius: 20, // Rounded corners for better aesthetics
-    // Optional: Add shadow for better visibility on light themes
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 2, // For Android shadow
+    // Removed position: 'absolute', top, left, zIndex
+    // Removed background colors and shadows - parent component should handle background if needed
+    padding: 10, // Maintain a good touch area size
+    borderRadius: 8, // Slightly less rounded, adjust as needed
+    // Center the icon within the touchable area if needed, but usually padding is enough
+    justifyContent: 'center',
+    alignItems: 'center',
+    // Add margin if needed when placed in a row/header
+    // marginRight: 10, // Example margin
   },
-  darkBackground: {
-    backgroundColor: 'rgba(31, 41, 55, 0.7)', // Semi-transparent dark background
-  },
-  lightBackground: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)', // Semi-transparent light background
-  },
+  // Removed darkBackground and lightBackground styles
 });
 
 export default BackButton;

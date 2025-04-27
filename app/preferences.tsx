@@ -1,174 +1,195 @@
-// ------------------------------------------------------
 // components/PreferencesScreen.tsx
-// ------------------------------------------------------
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ScrollView,
-  Alert,
+  // Alert, // Replaced by InAppMessage
   Dimensions,
   Platform,
+  ActivityIndicator,
+  SafeAreaView, // Use SafeAreaView for top/bottom padding
+  StatusBar, // Import StatusBar
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import Icon from 'react-native-vector-icons/Ionicons';
 import { UserContext } from '../app/UserContext'; // Adjust the path as needed
+import InAppMessage from '../components/ui/InAppMessage'; // Keep InAppMessage import
 
+// --- Configuration ---
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
-
 const { width } = Dimensions.get('window');
-const isSmallScreen = width < 350;
+const DEFAULT_REGION = 'US'; // Define a default region
 
-// Adjust font sizes based on screen width for responsiveness
-const baseFontSize = isSmallScreen ? 12 : 14;
-const headingFontSize = isSmallScreen ? 20 : 22;
-const sectionHeadingFontSize = isSmallScreen ? 14 : 16;
-const subHeadingFontSize = isSmallScreen ? 12 : 14;
+interface RegionInfo {
+  code: string;
+  name: string;
+}
 
-type IndustryType = string;
+// Define available regions with codes and display names
+const AVAILABLE_REGIONS_INFO: RegionInfo[] = [
+  { code: 'US', name: 'United States' },
+  { code: 'EG', name: 'Egypt' },
+  { code: 'ES', name: 'Spain' },
+  // Add more regions here as needed, e.g.:
+  // { code: 'GB', name: 'United Kingdom' },
+  // { code: 'FR', name: 'France' },
+];
 
-// Define Theme Colors
-const themes = {
-  light: {
-    background: '#F7F9FC',
-    containerBackground: '#FFFFFF',
-    resetButtonBackground: '#FF6F61',
-    resetButtonText: '#FFFFFF',
-    headingText: '#000000',
-    subHeadingText: '#555555',
-    sectionBackground: '#FFFFFF',
-    sectionHeadingText: '#333333',
-    optionButtonBackground: {
-      selected: '#F7B8D2',
-      unselected: '#FFFFFF',
-    },
-    optionButtonBorderColor: '#D1D8E0',
-    optionTextColor: '#333333',
-    selectedOptionTextColor: '#FFFFFF',
-    viewButtonBackground: '#8A2BE2',
-    viewButtonTextColor: '#FFFFFF',
-    resetButtonShadow: '#000000',
-    optionButtonShadow: '#000000',
-    selectedOptionButtonShadow: '#000000',
-    viewButtonShadow: '#000000',
-    noRelatedText: '#777777',
-    noCommentsText: '#777777',
-  },
-  dark: {
-    background: '#1F2937',
-    containerBackground: '#374151',
-    resetButtonBackground: '#EF4444',
-    resetButtonText: '#FFFFFF',
-    headingText: '#F3F4F6',
-    subHeadingText: '#D1D5DB',
-    sectionBackground: '#374151',
-    sectionHeadingText: '#F3F4F6',
-    optionButtonBackground: {
-      selected: '#6C63FF',
-      unselected: '#374151',
-    },
-    optionButtonBorderColor: '#6C63FF',
-    optionTextColor: '#FFFFFF',
-    selectedOptionTextColor: '#FFFFFF',
-    viewButtonBackground: '#6C63FF',
-    viewButtonTextColor: '#FFFFFF',
-    resetButtonShadow: '#000000',
-    optionButtonShadow: '#000000',
-    selectedOptionButtonShadow: '#000000',
-    viewButtonShadow: '#000000',
-    noRelatedText: '#D1D5DB',
-    noCommentsText: '#D1D5DB',
-  },
+
+// --- Responsive Sizing (Keep from redesign) ---
+const getResponsiveSize = (baseSize: number): number => {
+  if (width < 350) return baseSize * 0.9;
+  if (width < 400) return baseSize;
+  return baseSize * 1.1;
 };
 
-export default function PreferencesScreen() {
-  const [selectedOptions, setSelectedOptions] = useState<IndustryType[]>([]);
-  const [username, setUsername] = useState<string>('Guest');
-  const router = useRouter();
-  const { userToken, isDarkTheme } = useContext(UserContext); // Consume isDarkTheme
+const fontSizes = {
+  base: getResponsiveSize(14),
+  subHeading: getResponsiveSize(16),
+  sectionHeading: getResponsiveSize(16),
+  heading: getResponsiveSize(24),
+  button: getResponsiveSize(15),
+};
 
+// --- Helper Function ---
+// Checks if two arrays contain the same elements, regardless of order
+const areArraysEqual = (arr1: string[], arr2: string[]): boolean => {
+    if (arr1.length !== arr2.length) return false;
+    const sortedArr1 = [...arr1].sort();
+    const sortedArr2 = [...arr2].sort();
+    return sortedArr1.every((value, index) => value === sortedArr2[index]);
+};
+
+
+// --- Component ---
+export default function PreferencesScreen() {
+  const router = useRouter();
+  const { userToken, isDarkTheme } = useContext(UserContext);
+
+  // --- State ---
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [initialPreferences, setInitialPreferences] = useState<string[]>([]);
+  const [selectedRegion, setSelectedRegion] = useState<string>(DEFAULT_REGION); // *** Added Region State ***
+  const [initialRegion, setInitialRegion] = useState<string>(DEFAULT_REGION); // *** Store initial Region ***
+  const [username, setUsername] = useState<string>('Guest');
+  const [isLoading, setIsLoading] = useState(true); // For initial fetch
+  const [isSaving, setIsSaving] = useState(false); // For save/reset actions
+  const [messageVisible, setMessageVisible] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [messageType, setMessageType] = useState<'info' | 'error' | 'success'>('info');
+
+  // --- Theming ---
+   const themes = {
+     light: {
+      background: '#F8F9FA', cardBackground: '#FFFFFF', textPrimary: '#1F2937', textSecondary: '#6B7280', textTertiary: '#9CA3AF', accent: '#6366F1', accentContrast: '#FFFFFF', buttonSecondaryBackground: '#E5E7EB', buttonSecondaryText: '#374151', destructive: '#EF4444', destructiveContrast: '#FFFFFF', success: '#10B981', successContrast: '#FFFFFF', info: '#3B82F6', infoContrast: '#FFFFFF', borderColor: '#E5E7EB', selectedBorder: '#6366F1', selectedBackground: '#EEF2FF', selectedText: '#4338CA',
+    },
+    dark: {
+      background: '#0A0A0A', cardBackground: '#1A1A1A', textPrimary: '#F9FAFB', textSecondary: '#9CA3AF', textTertiary: '#6B7280', accent: '#818CF8', accentContrast: '#FFFFFF', buttonSecondaryBackground: '#374151', buttonSecondaryText: '#D1D5DB', destructive: '#F87171', destructiveContrast: '#FFFFFF', success: '#34D399', successContrast: '#111827', info: '#60A5FA', infoContrast: '#111827', borderColor: '#374151', selectedBorder: '#818CF8', selectedBackground: '#3730A3', selectedText: '#E0E7FF',
+    },
+  };
   const currentTheme = isDarkTheme ? themes.dark : themes.light;
 
-  const industriesByCategory: Record<string, string[]> = {
-    News: ['BREAKING NEWS', 'POLITICS', 'Top'],
-    'Health & Wellness': ['HEALTH', 'Environment', 'Food'],
-    Sports: ['Football', 'Formula1', 'SPORTS'],
-    'Technology & Gaming': ['Technology', 'Gaming'],
-    Lifestyle: [
-      'Business',
-      'Travel',
-      'Health',
-      'Education',
-      'Lifestyle',
-      'Tourism',
-      'World',
-    ],
-    'Arts & Entertainment': ['Entertainment'],
-    Other: ['Science', 'CRIME', 'Domestic', 'Other'],
+  // --- Data Definitions ---
+   const industriesByCategory: Record<string, string[]> = {
+    'Top Stories': ['Breaking News', 'Politics', 'Top', 'World'],
+    Business: ['Business', 'Technology'],
+    'Health & Environment': ['Health', 'Environment', 'Food', 'Science'],
+    Sports: ['Football', 'Formula1', 'Sports', 'Gaming'],
+    Lifestyle: ['Lifestyle', 'Travel', 'Education', 'Tourism'],
+    Entertainment: ['Entertainment'],
+    Society: ['Crime', 'Domestic', 'Other'],
   };
 
+  // --- Helper Functions ---
+  const showInAppMessage = useCallback((text: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setMessageText(text);
+    setMessageType(type);
+    setMessageVisible(true);
+  }, []);
+
+  // --- Effects ---
   useEffect(() => {
-    const fetchUsername = async () => {
-      if (!userToken) {
-        setUsername('Guest');
-        return;
-      }
+    const fetchInitialData = async () => {
+      setIsLoading(true);
+      setInitialPreferences([]);
+      setSelectedOptions([]);
+      setSelectedRegion(DEFAULT_REGION); // Reset region state initially
+      setInitialRegion(DEFAULT_REGION);
+      let fetchedUsername = 'Guest';
 
-      try {
-        const response = await fetch(`${domaindynamo}/get-username`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: userToken }),
-        });
+      // 1. Fetch Username
+      if (userToken) {
+        try {
+          const response = await fetch(`${domaindynamo}/get-username`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: userToken }),
+          });
+          const data = await response.json();
+          if (response.ok && data.status === 'Success' && data.username) {
+            fetchedUsername = data.username; setUsername(fetchedUsername);
+          } else { console.warn('Failed to fetch username:', data.message || 'Unknown error'); setUsername('Guest'); }
+        } catch (error) { console.error('Error fetching username:', error); setUsername('Guest'); }
+      } else { setUsername('Guest'); }
 
-        const data = await response.json();
-        if (data.status === 'Success' && data.username) {
-          setUsername(data.username);
-        } else {
-          setUsername('Guest');
+      // 2. Fetch Preferences & Region (only if logged in)
+      if (userToken && fetchedUsername !== 'Guest') {
+        // Fetch Preferences
+        try {
+          const prefResponse = await fetch(`${domaindynamo}/check-preferences`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: fetchedUsername }),
+          });
+          const prefData = await prefResponse.json();
+          if (prefResponse.ok && prefData.status === 'Success' && Array.isArray(prefData.data)) {
+            const preferences = prefData.data.map((item: any) => item.preference).filter(Boolean); // Ensure only strings
+            setSelectedOptions(preferences); setInitialPreferences(preferences);
+          } else { console.warn('Failed to fetch preferences:', prefData.message || 'No preferences found'); }
+        } catch (error) { console.error('Error fetching preferences:', error); }
+
+        // *** Fetch Region ***
+        try {
+            const regionResponse = await fetch(`${domaindynamo}/get-region?username=${encodeURIComponent(fetchedUsername)}`); // Use correct domain
+            if (regionResponse.ok) {
+                const regionData = await regionResponse.json();
+                if (regionData.status === 'Success' && regionData.region && typeof regionData.region === 'string') {
+                    console.log("Region fetched:", regionData.region);
+                    setSelectedRegion(regionData.region); // Set current selection
+                    setInitialRegion(regionData.region); // Store initial value
+                } else {
+                    // Handle case where region isn't set or API error
+                    console.warn('No valid region found for user, using default:', DEFAULT_REGION, regionData.message);
+                    setSelectedRegion(DEFAULT_REGION);
+                    setInitialRegion(DEFAULT_REGION);
+                }
+            } else {
+                 // Handle HTTP error fetching region
+                 console.warn('Failed to fetch region status:', regionResponse.status);
+                 setSelectedRegion(DEFAULT_REGION); // Use default on error
+                 setInitialRegion(DEFAULT_REGION);
+            }
+        } catch (regionError) {
+            // Handle network error fetching region
+            console.error('Network error fetching region:', regionError);
+            setSelectedRegion(DEFAULT_REGION); // Use default on error
+            setInitialRegion(DEFAULT_REGION);
         }
-      } catch (error) {
-        console.error('Error fetching username:', error);
-        setUsername('Guest');
-      }
-    };
-
-    fetchUsername();
-  }, [userToken]);
-
-  useEffect(() => {
-    const fetchPreferences = async (username: string) => {
-      if (!userToken || username === 'Guest') return;
-
-      try {
-        const response = await fetch(`${domaindynamo}/check-preferences`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: username }),
-        });
-
-        const data = await response.json();
-
-        if (data.status === 'Success' && Array.isArray(data.data)) {
-          const preferences = data.data.map((item: any) => item.preference);
-          setSelectedOptions(preferences.length ? preferences : []);
-        } else {
+      } else {
+          // Reset to defaults if not logged in
           setSelectedOptions([]);
-        }
-      } catch (error) {
-        console.error('Error fetching preferences:', error);
-        setSelectedOptions([]);
+          setInitialPreferences([]);
+          setSelectedRegion(DEFAULT_REGION);
+          setInitialRegion(DEFAULT_REGION);
       }
+
+      setIsLoading(false);
     };
 
-    if (username !== 'Guest') {
-      fetchPreferences(username);
-    }
-  }, [username, userToken]);
+    fetchInitialData();
+  }, [userToken]); // Re-run when userToken changes
 
-  const toggleOption = (option: IndustryType) => {
+  // --- Event Handlers ---
+  const toggleOption = (option: string) => {
     setSelectedOptions((prevSelected) =>
       prevSelected.includes(option)
         ? prevSelected.filter((item) => item !== option)
@@ -176,279 +197,308 @@ export default function PreferencesScreen() {
     );
   };
 
-  const handleResetPreferences = async (username: string) => {
-    if (!userToken || username === 'Guest') return;
+  // *** Handler for selecting a region ***
+  const handleSelectRegion = (region: string) => {
+      setSelectedRegion(region);
+  };
 
+  const handleResetPreferences = async () => {
+    if (!userToken || username === 'Guest') { showInAppMessage('You must be logged in to reset.', 'error'); return; }
+    setIsSaving(true);
+    let resetSuccess = false;
+    let regionResetSuccess = false;
+
+    // 1. Reset Preferences on Backend
     try {
       const response = await fetch(`${domaindynamo}/delete-preferences`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username }),
       });
-
       if (response.ok) {
-        setSelectedOptions([]);
-      } else {
-        console.error('Error resetting preferences:', await response.json());
-      }
-    } catch (error) {
-      console.error('Error resetting preferences:', error);
-    }
-  };
+        resetSuccess = true;
+      } else { console.error('Error resetting preferences:', await response.text()); }
+    } catch (error: any) { console.error('Error resetting preferences:', error); }
 
-  const handleViewClick = async (username: string) => {
-    if (!userToken || username === 'Guest') {
-      Alert.alert('Error', 'You must be logged in to save preferences.');
-      return;
-    }
-
-    if (selectedOptions.length === 0) {
-      Alert.alert('No Preferences', 'Please select at least one preference.');
-      return;
-    }
-
+    // 2. Reset Region on Backend (to default)
     try {
-      const addPreferencePromises = selectedOptions.map(async (preference) => {
-        const response = await fetch(`${domaindynamo}/add-preference`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: username, preference }),
-        });
-
-        const data = await response.json();
-        if (response.status === 409) {
-          console.warn(data.message);
-        } else if (response.status !== 200) {
-          console.error('Error adding preference:', data.error);
-        }
+      const regionSetResponse = await fetch(`${domaindynamo}/set-region`, {
+         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, region: DEFAULT_REGION }),
       });
+      if (regionSetResponse.ok) {
+          regionResetSuccess = true;
+      } else { console.error('Failed to set region during reset:', await regionSetResponse.text()); }
+    } catch (regionSetError) { console.error('Error setting region during reset:', regionSetError); }
 
-      await Promise.all(addPreferencePromises);
-
-      Alert.alert('Success', 'Your preferences have been saved.');
-      router.push('/');
-    } catch (error) {
-      console.error('Error handling view click:', error);
-      Alert.alert('Error', 'Failed to save preferences.');
+    // 3. Update Local State & Show Message
+    if (resetSuccess && regionResetSuccess) {
+        setSelectedOptions([]);
+        setInitialPreferences([]);
+        setSelectedRegion(DEFAULT_REGION);
+        setInitialRegion(DEFAULT_REGION);
+        showInAppMessage('Preferences and Region reset', 'success');
+    } else {
+        showInAppMessage(`Failed to reset fully.${!resetSuccess ? ' Preferences failed.' : ''}${!regionResetSuccess ? ' Region failed.' : ''}`, 'error');
     }
+
+    setIsSaving(false);
   };
 
-  const numColumns = width < 400 ? 2 : 3;
+  const handleSaveChanges = async () => {
+    if (!userToken || username === 'Guest') { showInAppMessage('You must be logged in to save.', 'error'); return; }
 
-  const renderOption = ({ item }: { item: IndustryType }) => {
-    const isSelected = selectedOptions.includes(item);
+    const preferencesChanged = !areArraysEqual(initialPreferences, selectedOptions);
+    const regionChanged = initialRegion !== selectedRegion; // Check if region changed
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.optionButton,
-          isSelected && styles.selectedOptionButton,
-          {
-            backgroundColor: isDarkTheme
-              ? isSelected
-                ? themes.dark.optionButtonBackground.selected
-                : themes.dark.optionButtonBackground.unselected
-              : isSelected
-              ? themes.light.optionButtonBackground.selected
-              : themes.light.optionButtonBackground.unselected,
-            borderColor: isDarkTheme
-              ? themes.dark.optionButtonBorderColor
-              : themes.light.optionButtonBorderColor,
-            shadowColor: currentTheme.optionButtonShadow,
-          },
-        ]}
-        onPress={() => toggleOption(item)}
-        activeOpacity={0.7}
-      >
-        <Text
-          style={[
-            styles.optionText,
-            isSelected && styles.selectedOptionText,
-            { color: isDarkTheme ? themes.dark.optionTextColor : themes.light.optionTextColor },
-          ]}
-        >
-          {item}
-        </Text>
-      </TouchableOpacity>
-    );
+    if (!preferencesChanged && !regionChanged) {
+        showInAppMessage("Settings haven't changed.", 'info');
+        setTimeout(() => { if (router.canGoBack()) router.back(); else router.push('/'); }, 1000);
+        return;
+    }
+
+    setIsSaving(true);
+    let preferencesSaveOk = true; // Assume ok if not changed
+    let regionSaveOk = true; // Assume ok if not changed
+    let overallErrorMessage = '';
+
+    // --- 1. Save Preferences (only if changed) ---
+    if (preferencesChanged) {
+      try {
+        // Delete removed preferences
+        const removedPreferences = initialPreferences.filter(pref => !selectedOptions.includes(pref));
+        if (removedPreferences.length > 0) {
+            // Assuming a bulk delete endpoint exists or delete one by one
+            // For simplicity, let's assume single deletes or handle on backend logic when adding
+            console.log("Handling removed preferences:", removedPreferences);
+            // Example: await Promise.all(removedPreferences.map(pref => deletePreference(pref)));
+        }
+
+        // Add new preferences
+        const addedPreferences = selectedOptions.filter(pref => !initialPreferences.includes(pref));
+        if (addedPreferences.length > 0) {
+            const addPreferencePromises = addedPreferences.map(async (preference) => {
+                const response = await fetch(`${domaindynamo}/add-preference`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, preference }),
+                });
+                const data = await response.json().catch(() => ({})); // Catch JSON parse errors
+                if (!response.ok && response.status !== 409) { // Allow 409 (already exists)
+                     console.error(`Error adding preference '${preference}':`, data.error || `Status ${response.status}`);
+                     return false; // Indicate failure
+                }
+                return true; // Indicate success or already exists
+            });
+            const results = await Promise.all(addPreferencePromises);
+            if (results.some(ok => !ok)) { preferencesSaveOk = false; } // Mark as failed if any add failed
+        }
+         if (preferencesSaveOk) setInitialPreferences([...selectedOptions]); // Update initial state if successful
+
+      } catch (error: any) {
+        console.error('Error saving preferences:', error);
+        preferencesSaveOk = false;
+        overallErrorMessage += 'Failed to save preferences. ';
+      }
+    }
+
+    // --- 2. Save Region (only if changed) ---
+    if (regionChanged && selectedRegion) { // Ensure selectedRegion is not null/empty
+        try {
+            const regionSaveResponse = await fetch(`${domaindynamo}/set-region`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, region: selectedRegion }),
+            });
+            if (regionSaveResponse.ok) {
+                setInitialRegion(selectedRegion); // Update initial state
+                console.log('Region saved successfully');
+            } else {
+                regionSaveOk = false;
+                console.error('Failed to save region:', await regionSaveResponse.text());
+                overallErrorMessage += 'Failed to save region. ';
+            }
+        } catch (regionSaveError: any) {
+            regionSaveOk = false;
+            console.error('Error saving region:', regionSaveError);
+            overallErrorMessage += 'Network error saving region. ';
+        }
+    }
+
+    // --- 3. Show Final Message & Navigate ---
+    setIsSaving(false);
+    if (preferencesSaveOk && regionSaveOk) {
+        showInAppMessage('Settings saved successfully!', 'success');
+    } else {
+         showInAppMessage(overallErrorMessage || 'Some settings might not have saved correctly.', 'error');
+    }
+
+    setTimeout(() => { if (router.canGoBack()) router.back(); else router.push('/'); }, 1500);
   };
 
-  return (
-    <ScrollView
-      contentContainerStyle={[
-        styles.scrollContainer,
-        { backgroundColor: currentTheme.background },
-      ]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={[styles.container, { backgroundColor: currentTheme.containerBackground }]}>
+  // --- Render Logic ---
+  const renderOption = (option: string | RegionInfo, isRegion: boolean = false) => {
+      let code: string;
+      let name: string;
+      let optionKey: string;
+
+      if (isRegion && typeof option === 'object' && option !== null && 'code' in option && 'name' in option) {
+          // Handling RegionInfo object
+          code = option.code;
+          name = option.name;
+          optionKey = code; // Use code for the key
+      } else if (!isRegion && typeof option === 'string') {
+          // Handling preference string
+          code = option;
+          name = option.toLowerCase().replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); // Format preference name
+          optionKey = code;
+      } else {
+          console.warn("Invalid option passed to renderOption:", option);
+          return null; // Don't render if the data format is unexpected
+      }
+
+      // Determine if the current option/region is selected
+      const isSelected = isRegion ? selectedRegion === code : selectedOptions.includes(code);
+      // Determine the press handler
+      const onPress = isRegion ? () => handleSelectRegion(code) : () => toggleOption(code);
+
+      return (
         <TouchableOpacity
+          key={optionKey} // Use the code as the key
           style={[
-            styles.resetButton,
+            styles.optionButton,
             {
-              backgroundColor: currentTheme.resetButtonBackground,
-              shadowColor: currentTheme.resetButtonShadow,
+              backgroundColor: isSelected ? currentTheme.selectedBackground : currentTheme.cardBackground,
+              borderColor: isSelected ? currentTheme.selectedBorder : currentTheme.borderColor,
             },
+            // isRegion && isSelected && styles.regionSelected, // Keep if you have specific styles
           ]}
-          onPress={() => handleResetPreferences(username)}
-          activeOpacity={0.8}
-          accessibilityLabel="Reset Preferences"
-          accessibilityRole="button"
+          onPress={onPress}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.resetButtonText, { color: currentTheme.resetButtonText }]}>
-            Reset
-          </Text>
-        </TouchableOpacity>
-        <Text style={[styles.heading, { color: currentTheme.headingText }]}>
-          Hi {username},
-        </Text>
-        <Text style={[styles.subHeading, { color: currentTheme.subHeadingText }]}>
-          What are your preferences?
-        </Text>
-
-        {Object.entries(industriesByCategory).map(([category, options]) => (
-          <View
-            style={[styles.section, { backgroundColor: currentTheme.sectionBackground }]}
-            key={category}
+          {/* Show radio button icon for regions */}
+          {isRegion && (
+              <Icon
+                  name={isSelected ? "radio-button-on" : "radio-button-off"}
+                  size={18}
+                  color={isSelected ? currentTheme.selectedText : currentTheme.textTertiary}
+                  style={styles.checkmarkIcon} // Reusing style for margin is fine
+              />
+          )}
+          {/* Show checkmark icon for preferences */}
+          {!isRegion && isSelected && (
+              <Icon name="checkmark-circle" size={18} color={currentTheme.selectedText} style={styles.checkmarkIcon} />
+          )}
+          {/* Display the readable name */}
+          <Text
+            style={[
+              styles.optionText,
+              { color: isSelected ? currentTheme.selectedText : currentTheme.textPrimary },
+            ]}
           >
-            <Text style={[styles.sectionHeading, { color: currentTheme.sectionHeadingText }]}>
-              {category}
-            </Text>
-            <FlatList
-              data={options}
-              keyExtractor={(item, index) => `${category}-${index}`}
-              renderItem={renderOption}
-              numColumns={numColumns}
-              columnWrapperStyle={styles.rowStyle}
-              scrollEnabled={false}
-              contentContainerStyle={{ paddingVertical: 5 }}
-            />
-          </View>
-        ))}
-
-        <TouchableOpacity
-          style={[
-            styles.viewButton,
-            {
-              backgroundColor: currentTheme.viewButtonBackground,
-              shadowColor: currentTheme.viewButtonShadow,
-            },
-          ]}
-          onPress={() => handleViewClick(username)}
-          activeOpacity={0.8}
-          accessibilityLabel="Save Preferences and View"
-          accessibilityRole="button"
-        >
-          <Text style={[styles.viewButtonText, { color: currentTheme.viewButtonTextColor }]}>
-            VIEW
+            {name}
           </Text>
         </TouchableOpacity>
-      </View>
-    </ScrollView>
+      );
+  };
+
+  // --- Loading State ---
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
+        <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} backgroundColor={currentTheme.background} />
+        <ActivityIndicator size="large" color={currentTheme.accent} />
+        <Text style={[styles.loadingText, { color: currentTheme.textSecondary }]}>Loading Preferences...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  // --- Main Content ---
+  return (
+    <SafeAreaView style={[styles.outerContainer, { backgroundColor: currentTheme.background }]}>
+        <StatusBar barStyle={isDarkTheme ? 'light-content' : 'dark-content'} backgroundColor={currentTheme.background} />
+        <ScrollView
+            contentContainerStyle={styles.scrollContainer}
+            keyboardShouldPersistTaps="handled"
+        >
+            {/* --- Header --- */}
+            <View style={styles.headerContainer}>
+                <Text style={[styles.heading, { color: currentTheme.textPrimary }]}>
+                    Settings
+                </Text>
+                <TouchableOpacity
+                    style={[styles.resetButton, { backgroundColor: currentTheme.buttonSecondaryBackground }]}
+                    onPress={handleResetPreferences} disabled={isSaving} activeOpacity={0.8}
+                >
+                    <Text style={[styles.resetButtonText, { color: currentTheme.destructive }]}> Reset </Text>
+                </TouchableOpacity>
+            </View>
+
+            {/* --- Region Section --- */}
+            <View style={[styles.section, { backgroundColor: currentTheme.cardBackground }]}>
+                <Text style={[styles.sectionHeading, { color: currentTheme.textPrimary }]}>
+                    Region
+                </Text>
+                <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary }]}>
+                    Select your primary region for content filtering.
+                </Text>
+                <View style={styles.optionsContainer}>
+                    {AVAILABLE_REGIONS_INFO.map(regionInfo => renderOption(regionInfo, true))}
+                </View>
+            </View>
+
+            {/* --- Interests Section Header --- */}
+             <Text style={[styles.subHeading, { color: currentTheme.textSecondary, marginTop: 20 }]}>
+                Select the topics you'd like to see more of.
+            </Text>
+
+            {/* --- Interest Categories --- */}
+            {Object.entries(industriesByCategory).map(([category, options]) => (
+                <View style={[styles.section, { backgroundColor: currentTheme.cardBackground }]} key={category} >
+                    <Text style={[styles.sectionHeading, { color: currentTheme.textPrimary }]}> {category} </Text>
+                    <View style={styles.optionsContainer}>
+                        {options.map(option => renderOption(option, false))}
+                    </View>
+                </View>
+            ))}
+
+        </ScrollView>
+
+        {/* --- Bottom Save Button Area --- */}
+        <View style={[styles.footer, { borderTopColor: currentTheme.borderColor, backgroundColor: currentTheme.background }]}>
+             <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: currentTheme.accent }, isSaving && styles.saveButtonDisabled]}
+                onPress={handleSaveChanges} disabled={isSaving} activeOpacity={0.8}
+             >
+                {isSaving ? (
+                    <ActivityIndicator size="small" color={currentTheme.accentContrast} />
+                ) : (
+                    <Text style={[styles.saveButtonText, { color: currentTheme.accentContrast }]}> SAVE </Text>
+                )}
+            </TouchableOpacity>
+        </View>
+
+         {/* --- In-App Message Display --- */}
+         <InAppMessage visible={messageVisible} message={messageText} type={messageType} onClose={() => setMessageVisible(false)} />
+    </SafeAreaView>
   );
 }
 
-const primaryColor = '#8A2BE2'; // Accent color for light mode
+// --- Styles ---
 const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  container: {
-    flex: 1,
-    paddingTop: 60,
-    paddingBottom: 40,
-  },
-  resetButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
-    right: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    zIndex: 10,
-    elevation: 5,
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  resetButtonText: {
-    fontWeight: 'bold',
-    fontSize: baseFontSize,
-  },
-  heading: {
-    fontSize: headingFontSize,
-    fontWeight: 'bold',
-    marginBottom: 10,
-  },
-  subHeading: {
-    fontSize: subHeadingFontSize,
-    marginBottom: 20,
-  },
-  section: {
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 20,
-    shadowOpacity: 0.07,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
-  },
-  sectionHeading: {
-    fontSize: sectionHeadingFontSize,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#DDD',
-    paddingBottom: 5,
-  },
-  rowStyle: {
-    justifyContent: 'flex-start',
-  },
-  optionButton: {
-    borderWidth: 1,
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginRight: 10,
-    marginBottom: 10,
-    justifyContent: 'center',
-    elevation: 2,
-    minWidth: width < 400 ? width / 3 - 30 : 100,
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  selectedOptionButton: {
-    transform: [{ scale: 1.05 }],
-  },
-  optionText: {
-    fontSize: baseFontSize,
-    fontWeight: '600',
-    textAlign: 'center',
-    textTransform: 'capitalize',
-  },
-  selectedOptionText: {
-    color: '#FFFFFF',
-  },
-  viewButton: {
-    borderWidth: 1,
-    borderColor: primaryColor,
-    marginTop: 20,
-    alignSelf: 'center',
-    width: '50%',
-    paddingVertical: 12,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 3,
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  viewButtonText: {
-    fontSize: baseFontSize,
-    fontWeight: 'bold',
-  },
+  outerContainer: { flex: 1, },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', },
+  loadingText: { marginTop: 10, fontSize: fontSizes.base, },
+  scrollContainer: { flexGrow: 1, paddingHorizontal: 16, paddingTop: Platform.OS === 'android' ? 20 : 0, paddingBottom: 100, },
+  headerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40, marginBottom: 8, paddingHorizontal: 4, },
+  heading: { fontSize: fontSizes.heading, fontWeight: 'bold', },
+  resetButton: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 18, },
+  resetButtonText: { fontWeight: '600', fontSize: fontSizes.base * 0.9, },
+  subHeading: { fontSize: fontSizes.subHeading, marginBottom: 16, paddingHorizontal: 4, }, // Adjusted marginBottom
+  section: { borderRadius: 12, padding: 16, marginBottom: 16, },
+  sectionHeading: { fontSize: fontSizes.sectionHeading, fontWeight: '600', marginBottom: 12, }, // Adjusted marginBottom
+  // *** Added description style ***
+  sectionDescription: { fontSize: fontSizes.base * 0.95, marginBottom: 16, lineHeight: fontSizes.base * 1.4, },
+  optionsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, },
+  optionButton: { borderWidth: 1.5, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', },
+  optionText: { fontSize: fontSizes.base, fontWeight: '500', textAlign: 'center', },
+  checkmarkIcon: { marginRight: 6, },
+  regionSelected: { /* Potential extra style for selected region button if needed */ },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingVertical: 15, paddingHorizontal: 16, paddingBottom: Platform.OS === 'ios' ? 30 : 15, borderTopWidth: StyleSheet.hairlineWidth, },
+  saveButton: { paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', width: '100%', },
+  saveButtonDisabled: { opacity: 0.7, },
+  saveButtonText: { fontSize: fontSizes.button, fontWeight: '600', },
 });

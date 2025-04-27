@@ -1,199 +1,258 @@
-// ------------------------------------------------------
-// pages/FollowingPage.tsx
-// ------------------------------------------------------
-import React, { useState, useEffect, useContext } from 'react';
+// app/connections.tsx (Example Path)
+// This is the full, unabbreviated code for the ConnectionsPage component.
+
+import React, { useState, useEffect, useContext, useRef, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   FlatList,
-  Alert,
   TextInput,
   Platform,
   Image,
   ActivityIndicator,
   Dimensions,
-  ScrollView,
   RefreshControl,
+  SafeAreaView,
+  Keyboard,
+  Modal, // Using Modal instead of Alert
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
-import RepostFeedPage from '../app/repostfeed';
-import { UserContext } from '../app/UserContext';
-
+import { UserContext } from './UserContext'; // Adjust path if needed
+import { ScrollContext } from './ScrollContext'; // Adjust path if needed
+import InAppMessage from '../components/ui/InAppMessage'; // Adjust path if needed
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 const { width } = Dimensions.get('window');
 
-// Define Friend type
+// --- Interfaces ---
 interface Friend {
   username: string;
   profile_picture: string;
 }
 
-type FriendsSubTab = 'Received' | 'Sent' | 'Accepted';
+type SubTab = 'Friends' | 'Requests';
 
-const FollowingPage: React.FC = () => {
-  // Main tabs: "Friends" and "Reposts"
-  const [activeTab, setActiveTab] = useState<'Friends' | 'Reposts'>('Friends');
-  // Friends sub-tabs (when no search is active)
-  const [activeSubTab, setActiveSubTab] = useState<FriendsSubTab>('Received');
+// --- Responsive Sizing ---
+const getResponsiveSize = (baseSize: number): number => {
+  if (width < 350) return baseSize * 0.9;
+  if (width < 400) return baseSize;
+  return baseSize * 1.1;
+};
 
-  // Data lists
+const fontSizes = {
+  small: getResponsiveSize(11),
+  base: getResponsiveSize(13),
+  medium: getResponsiveSize(15),
+  large: getResponsiveSize(17),
+  button: getResponsiveSize(14),
+};
+
+// --- Default Placeholder ---
+const defaultPFP = 'https://via.placeholder.com/40/cccccc/969696?text=User';
+
+// --- Component ---
+const ConnectionsPage: React.FC = () => {
+  // --- State ---
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>('Friends');
   const [friends, setFriends] = useState<Friend[]>([]);
   const [pendingIncoming, setPendingIncoming] = useState<Friend[]>([]);
   const [pendingOutgoing, setPendingOutgoing] = useState<Friend[]>([]);
-
-  // Search-related state (when user types, the whole view shows search results)
   const [searchUsername, setSearchUsername] = useState('');
   const [searchResults, setSearchResults] = useState<Friend[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-
-  // Request loading tracker
-  const [followRequestLoading, setFollowRequestLoading] = useState<{ [key: string]: boolean }>({});
-
-  // Current user info and overall loading state
+  const [hasSearched, setHasSearched] = useState(false);
+  const [actionLoading, setActionLoading] = useState<{ [key: string]: boolean }>({});
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [messageVisible, setMessageVisible] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [messageType, setMessageType] = useState<'info' | 'error' | 'success'>('info');
+  const [showConfirmRemoveDialog, setShowConfirmRemoveDialog] = useState(false);
+  const [userToRemove, setUserToRemove] = useState<string | null>(null);
 
+  // --- Hooks ---
   const router = useRouter();
   const { userToken, isDarkTheme } = useContext(UserContext);
-  const styles = getStyles(isDarkTheme);
+  const { setScrollToTop } = useContext(ScrollContext);
+  const flatListRef = useRef<FlatList>(null);
 
-
-  // ---------------------------
-  // Helper: fetch user profile picture by username
-  // ---------------------------
-  const fetchUserProfilePicture = async (user: string): Promise<string> => {
-    try {
-      const response = await fetch(
-        `${domaindynamo}/get-profile-picture?username=${encodeURIComponent(user)}`
-      );
-      const data = await response.json();
-      if (data.status === 'Success' && data.profile_picture) {
-        return data.profile_picture;
-      } else {
-        return 'https://via.placeholder.com/50?text=User';
-      }
-    } catch (error) {
-      console.error(`Error fetching profile picture for ${user}:`, error);
-      return 'https://via.placeholder.com/50?text=User';
-    }
+  // --- Theming ---
+   const themes = {
+    light: {
+      background: '#F8F9FA', cardBackground: '#FFFFFF', textPrimary: '#1F2937',
+      textSecondary: '#6B7280', textTertiary: '#9CA3AF', accent: '#6366F1',
+      accentContrast: '#FFFFFF', destructive: '#EF4444', success: '#10B981',
+      info: '#3B82F6', borderColor: '#E5E7EB', placeholder: '#E5E7EB',
+      inputBackground: '#FFFFFF', destructiveContrast: '#FFFFFF',
+      successContrast: '#FFFFFF', infoContrast: '#FFFFFF',
+      buttonSecondaryBackground: '#E5E7EB', buttonSecondaryText: '#374151',
+      subTabTextInactive: '#6B7280',
+      subTabTextActive: '#1F2937',
+      subTabIndicator: '#6366F1',
+      modalBackdrop: 'rgba(0, 0, 0, 0.4)',
+      modalBackground: '#FFFFFF',
+    },
+    dark: {
+      background: '#0A0A0A', cardBackground: '#1A1A1A', textPrimary: '#F9FAFB',
+      textSecondary: '#9CA3AF', textTertiary: '#6B7280', accent: '#818CF8',
+      accentContrast: '#FFFFFF', destructive: '#F87171', success: '#34D399',
+      info: '#60A5FA', borderColor: '#374151', placeholder: '#374151',
+      inputBackground: '#1F2937', destructiveContrast: '#FFFFFF',
+      successContrast: '#111827', infoContrast: '#111827',
+      buttonSecondaryBackground: '#374151', buttonSecondaryText: '#D1D5DB',
+      subTabTextInactive: '#9CA3AF',
+      subTabTextActive: '#F9FAFB',
+      subTabIndicator: '#818CF8',
+      modalBackdrop: 'rgba(0, 0, 0, 0.6)',
+      modalBackground: '#1F2937',
+    },
   };
+  const currentTheme = isDarkTheme ? themes.dark : themes.light;
+  const styles = getStyles(currentTheme);
 
-  // ---------------------------
-  // Initialization
-  // ---------------------------
+  // --- Helper Functions ---
+  const showInAppMessage = useCallback((text: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setMessageText(text);
+    setMessageType(type);
+    setMessageVisible(true);
+    // Optional: Auto-hide after a delay
+    // setTimeout(() => setMessageVisible(false), 3000);
+  }, []);
+
+  // --- Effects ---
   useEffect(() => {
+    // Fetch username when component mounts or userToken changes
     if (userToken) {
       fetchUsername();
+    } else {
+      // Handle logged out state
+      setLoading(false);
+      showInAppMessage("Please log in to manage connections.", 'info');
+      setUsername('');
+      setFriends([]);
+      setPendingIncoming([]);
+      setPendingOutgoing([]);
     }
-  }, [userToken]);
+  }, [userToken]); // Rerun effect if userToken changes
 
   useEffect(() => {
+    // Fetch connection data once username is available
     if (username) {
-      refreshAll();
+      console.log(`Username set: ${username}. Fetching all connection data.`);
+      fetchAllConnectionData(); // Fetches friends, incoming, and outgoing
     }
-  }, [username]);
+  }, [username]); // Rerun effect if username changes
 
-  // Refresh function for live updates
-  const refreshAll = async () => {
-    await Promise.all([
-      fetchFriends(username),
-      fetchIncomingRequests(username),
-      fetchOutgoingRequests(username),
-    ]);
-    setLoading(false);
-  };
+  useEffect(() => {
+    // Setup scroll-to-top functionality via context
+    setScrollToTop(() => () => {
+      if (flatListRef.current) {
+        flatListRef.current.scrollToOffset({ offset: 0, animated: true });
+        console.log('ConnectionsPage: Scrolling list to top');
+      }
+    });
+     // Cleanup function to reset scroll-to-top callback on unmount
+     return () => setScrollToTop(() => () => {});
+  }, [setScrollToTop]);
 
-  const handleTabChange = (tab: 'Friends' | 'Reposts') => {
-    setActiveTab(tab);
-    // Reset search whenever switching main tab
-    if (tab === 'Friends') {
-      setSearchUsername('');
-      setSearchResults([]);
-    }
-  };
-
-  const handleSubTabChange = (subTab: FriendsSubTab) => {
-    setActiveSubTab(subTab);
-  };
-
-  // ---------------------------
-  // API Call Helpers
-  // ---------------------------
+  // --- Data Fetching ---
   const fetchUsername = async () => {
     if (!userToken) return;
+    setLoading(true);
+    setUsername('');
     try {
       const response = await fetch(`${domaindynamo}/get-username`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: userToken }),
       });
       const data = await response.json();
-      if (data.status === 'Success' && data.username) {
+      if (response.ok && data.status === 'Success' && data.username) {
         setUsername(data.username);
       } else {
-        setErrorMessage('Unable to retrieve your username.');
-        setFriends([]);
+        setUsername('');
+        showInAppMessage(data.message || 'Could not verify user session.', 'error');
+        setLoading(false);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching username:', error);
-      setErrorMessage('Error retrieving username.');
-      setFriends([]);
+      showInAppMessage(`Error fetching user: ${error.message}`, 'error');
+      setUsername('');
+      setLoading(false);
     }
   };
 
-  const fetchFriends = async (user: string) => {
+  const fetchConnections = async (user: string) => {
     try {
       const responseFollowed = await fetch(`${domaindynamo}/get_followed_users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ follower_username: user }),
       });
       const dataFollowed = await responseFollowed.json();
-      let following: string[] = [];
-      if (dataFollowed.status === 'Success' && Array.isArray(dataFollowed.followedUsernames)) {
-        following = dataFollowed.followedUsernames;
-      }
+      let connections: string[] = (responseFollowed.ok && dataFollowed.status === 'Success' && Array.isArray(dataFollowed.followedUsernames)) ? dataFollowed.followedUsernames : [];
 
-      const responseFollowers = await fetch(`${domaindynamo}/get_followers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followed_username: user }),
-      });
-      const dataFollowers = await responseFollowers.json();
-      let followers: string[] = [];
-      if (dataFollowers.status === 'Success' && Array.isArray(dataFollowers.followerUsernames)) {
-        followers = dataFollowers.followerUsernames;
-      }
-
-      const union = Array.from(new Set([...following, ...followers]));
-
-      const friendList: Friend[] = await Promise.all(
-        union.map(async (uname: string) => ({
+      const connectionList: Friend[] = await Promise.all(
+        connections.map(async (uname: string) => ({
           username: uname,
           profile_picture: await fetchUserProfilePicture(uname),
         }))
       );
-      setFriends(friendList);
+      setFriends(connectionList);
     } catch (error) {
-      console.error('Error fetching friends:', error);
+      console.error('Error fetching connections:', error);
       setFriends([]);
+    }
+  };
+
+  const fetchAllConnectionData = async () => {
+    if (!username) return;
+    console.log("Fetching all connection data (Friends, Incoming, Outgoing)...");
+    try {
+      await Promise.all([
+        fetchConnections(username),
+        fetchIncomingRequests(username),
+        fetchOutgoingRequests(username),
+      ]);
+      console.log("Finished fetching all connection data.");
+    } catch (error) {
+        console.error("Error during combined fetch:", error);
+        showInAppMessage("Failed to load connection details.", "error");
+    } finally {
+        setLoading(false);
+        setRefreshing(false);
+    }
+  };
+
+  const onRefresh = useCallback(async () => {
+    if (!username) { setRefreshing(false); return; }
+    console.log("Refreshing connection data...");
+    setRefreshing(true);
+    await fetchAllConnectionData();
+  }, [username]);
+
+  const fetchUserProfilePicture = async (user: string): Promise<string> => {
+    if (!user) return defaultPFP;
+    try {
+      const response = await fetch(`${domaindynamo}/get-profile-picture?username=${encodeURIComponent(user)}`);
+      const data = await response.json();
+      return (response.ok && data.status === 'Success' && data.profile_picture) ? data.profile_picture : defaultPFP;
+    } catch (error) {
+      console.error(`Error fetching profile picture for ${user}:`, error);
+      return defaultPFP;
     }
   };
 
   const fetchIncomingRequests = async (user: string) => {
     try {
       const response = await fetch(`${domaindynamo}/get_pending_users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ followed_username: user }),
       });
       const data = await response.json();
-      if (data.status === 'Success' && Array.isArray(data.pendingUsernames)) {
+      if (response.ok && data.status === 'Success' && Array.isArray(data.pendingUsernames)) {
         const incoming: Friend[] = await Promise.all(
           data.pendingUsernames.map(async (uname: string) => ({
             username: uname,
@@ -203,6 +262,11 @@ const FollowingPage: React.FC = () => {
         setPendingIncoming(incoming);
       } else {
         setPendingIncoming([]);
+         if (data.message && data.message !== 'No pending follow requests found.') {
+            console.warn('Error fetching incoming requests:', data.message);
+         } else if (!response.ok) {
+             console.warn('Error fetching incoming requests:', `Status: ${response.status}`);
+         }
       }
     } catch (error) {
       console.error('Error fetching incoming requests:', error);
@@ -213,12 +277,11 @@ const FollowingPage: React.FC = () => {
   const fetchOutgoingRequests = async (user: string) => {
     try {
       const response = await fetch(`${domaindynamo}/get_outgoing_pending_requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ follower_username: user }),
       });
       const data = await response.json();
-      if (data.status === 'Success' && Array.isArray(data.pendingFollowRequests)) {
+      if (response.ok && data.status === 'Success' && Array.isArray(data.pendingFollowRequests)) {
         const requests: Friend[] = await Promise.all(
           data.pendingFollowRequests.map(async (uname: string) => ({
             username: uname,
@@ -228,6 +291,11 @@ const FollowingPage: React.FC = () => {
         setPendingOutgoing(requests);
       } else {
         setPendingOutgoing([]);
+         if (data.message && data.message !== 'No outgoing pending follow requests found.') {
+             console.warn('Error fetching outgoing requests:', data.message);
+         } else if (!response.ok) {
+             console.warn('Error fetching outgoing requests:', `Status: ${response.status}`);
+         }
       }
     } catch (error) {
       console.error('Error fetching outgoing requests:', error);
@@ -235,594 +303,700 @@ const FollowingPage: React.FC = () => {
     }
   };
 
-  // ---------------------------
-  // Action Handlers
-  // ---------------------------
-  const handleAddFriend = async (newFriendUsername: string) => {
-    if (!userToken) {
-      Alert.alert('Error', 'You must be logged in to add friends.');
-      return;
-    }
-    if (
-      friends.some(friend => friend.username === newFriendUsername) ||
-      pendingOutgoing.some(u => u.username === newFriendUsername)
-    ) {
-      Alert.alert('Info', 'You are already connected or your request is pending.');
-      return;
-    }
-    if (followRequestLoading[newFriendUsername]) return;
-
-    setFollowRequestLoading(prev => ({ ...prev, [newFriendUsername]: true }));
+ // --- Action Handlers ---
+ const handleAction = async (actionType: string, targetUsername: string, apiEndpoint: string, body: object, successMessage: string, errorMessage: string) => {
+    if (actionLoading[targetUsername]) return;
+    setActionLoading(prev => ({ ...prev, [targetUsername]: true }));
     try {
-      const response = await fetch(`${domaindynamo}/follow_Users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: username,
-          followed_username: newFriendUsername,
-        }),
-      });
-      const result = await response.json();
-      if (response.ok && result.status === 'Success') {
-        Alert.alert('Success', `Friend request sent to ${newFriendUsername}.`);
-        await fetchOutgoingRequests(username);
-      } else {
-        Alert.alert('Error', result.message || 'Failed to send friend request.');
-      }
-    } catch (error) {
-      console.error('Error adding friend:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
+        const response = await fetch(`${domaindynamo}${apiEndpoint}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const result = await response.json();
+        if (response.ok && result.status === 'Success') {
+            showInAppMessage(successMessage, 'success');
+            await fetchAllConnectionData(); // Refetch data on success
+        } else {
+            showInAppMessage(result.message || errorMessage, 'error');
+        }
+    } catch (error: any) {
+        console.error(`Error performing action ${actionType}:`, error);
+        showInAppMessage(`Action failed: ${error.message || 'Network error'}`, 'error');
     } finally {
-      setFollowRequestLoading(prev => ({ ...prev, [newFriendUsername]: false }));
+        setActionLoading(prev => ({ ...prev, [targetUsername]: false }));
     }
-  };
+ };
 
-  const handleCancelRequest = async (friendUsername: string) => {
-    try {
-      const response = await fetch(`${domaindynamo}/cancel_follow_request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: username,
-          followed_username: friendUsername,
-        }),
-      });
-      const result = await response.json();
-      if (response.ok && result.status === 'Success') {
-        Alert.alert('Cancelled', `Your friend request to ${friendUsername} has been cancelled.`);
-        await fetchOutgoingRequests(username);
-      } else {
-        Alert.alert('Error', result.message || 'Failed to cancel friend request.');
-      }
-    } catch (error) {
-      console.error('Error cancelling friend request:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
+ const handleAddFriend = (newFriendUsername: string) => {
+    if (!userToken || !username) { showInAppMessage('Login required.', 'info'); return; }
+    if (newFriendUsername === username) { showInAppMessage("You cannot add yourself as a friend.", 'info'); return; }
+    if (friends.some(f => f.username === newFriendUsername) || pendingOutgoing.some(u => u.username === newFriendUsername) || pendingIncoming.some(u => u.username === newFriendUsername)) {
+        showInAppMessage('Already friends or request pending.', 'info'); return;
     }
-  };
+    handleAction(
+        'addFriend', newFriendUsername, '/follow_Users',
+        { follower_username: username, followed_username: newFriendUsername },
+        `Friend request sent to ${newFriendUsername}.`,
+        'Failed to send friend request.'
+    );
+ };
 
-  const handleAcceptRequest = async (requestingUser: string) => {
-    try {
-      const response = await fetch(`${domaindynamo}/accept_follow_request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: requestingUser,
-          followed_username: username,
-        }),
-      });
-      const result = await response.json();
-      if (response.ok && result.status === 'Success') {
-        Alert.alert('Success', `You have accepted ${requestingUser}'s request.`);
-        await refreshAll();
-      } else {
-        Alert.alert('Error', result.message || 'Failed to accept friend request.');
-      }
-    } catch (error) {
-      console.error('Error accepting friend request:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
+ const handleCancelRequest = (friendUsername: string) => {
+    if (!username) return;
+    handleAction(
+        'cancelRequest', friendUsername, '/cancel_follow_request',
+        { follower_username: username, followed_username: friendUsername },
+        `Friend request to ${friendUsername} cancelled.`,
+        'Failed to cancel friend request.'
+    );
+ };
 
-  const handleRejectRequest = async (requestingUser: string) => {
-    try {
-      const response = await fetch(`${domaindynamo}/reject_follow_request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: requestingUser,
-          followed_username: username,
-        }),
-      });
-      const result = await response.json();
-      if (response.ok && result.status === 'Success') {
-        Alert.alert('Rejected', `You have rejected ${requestingUser}'s request.`);
-        await fetchIncomingRequests(username);
-      } else {
-        Alert.alert('Error', result.message || 'Failed to reject friend request.');
-      }
-    } catch (error) {
-      console.error('Error rejecting friend request:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
+ // Updated handler to: 1. Accept B->A, 2. Create A->B, 3. Accept A->B
+ const handleAcceptRequest = async (requestingUser: string) => {
+    if (!username) return;
 
-  const handleRemoveFriend = async (friendUsername: string) => {
-    try {
-      const response1 = await fetch(`${domaindynamo}/remove_follow_Users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: username,
-          followed_username: friendUsername,
-        }),
-      });
-      const response2 = await fetch(`${domaindynamo}/remove_follow_Users`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          follower_username: friendUsername,
-          followed_username: username,
-        }),
-      });
-      if (response1.ok || response2.ok) {
-        Alert.alert('Removed', `You have removed ${friendUsername} as a friend.`);
-        await refreshAll();
-      } else {
-        Alert.alert('Error', 'Failed to remove friend.');
-      }
-    } catch (error) {
-      console.error('Error removing friend:', error);
-      Alert.alert('Error', 'Something went wrong. Please try again later.');
-    }
-  };
+    console.log(`[handleAcceptRequest] Accepting request from ${requestingUser} and attempting auto-mutual follow.`);
 
-  // ---------------------------
-  // Search Functionality
-  // ---------------------------
-  const searchUser = async (query: string) => {
-    if (query.trim().length === 0) {
-      setSearchResults([]);
-      return;
-    }
-    setSearchLoading(true);
+    // --- Step 1: Accept the incoming request (B -> A) ---
+    let acceptSuccess = false;
     try {
-      const response = await fetch(`${domaindynamo}/get-similar_users_searched`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: query }),
-      });
-      const data = await response.json();
-      if (data.status === 'Success' && Array.isArray(data.similar_users)) {
-        const results: Friend[] = await Promise.all(
-          data.similar_users.map(async (uname: string) => ({
-            username: uname,
-            profile_picture: await fetchUserProfilePicture(uname),
-          }))
+         await handleAction(
+            'acceptRequest',
+            requestingUser,
+            '/accept_follow_request', // Endpoint to accept B -> A
+            { follower_username: requestingUser, followed_username: username },
+            `Accepted ${requestingUser}'s friend request.`, // Initial message
+            'Failed to accept friend request.'
         );
-        setSearchResults(results);
-      } else {
-        setSearchResults([]);
-      }
+        acceptSuccess = true;
     } catch (error) {
-      console.error('Error searching users:', error);
-      setErrorMessage('Failed to search for users.');
-      setSearchResults([]);
-    } finally {
-      setSearchLoading(false);
+         console.error("Error during Step 1 (Accept B->A):", error);
+         acceptSuccess = false;
+         // Error message already shown by handleAction
+         return; // Stop if initial accept fails
     }
-  };
 
-  // ---------------------------
-  // Rendering Helpers for Friend Cards
-  // ---------------------------
-  const renderReceivedRequestCard = ({ item }: { item: Friend }) => (
-    <View style={styles.card}>
-      <View style={styles.cardContent}>
-        <Image source={{ uri: item.profile_picture }} style={styles.profileImage} />
-        <Text style={styles.userName}>{item.username}</Text>
+    // --- Step 2: Create the follow-back request (A -> B) ---
+    let followBackCreated = false;
+    if (acceptSuccess) { // Only proceed if step 1 didn't throw
+        try {
+            await handleAction(
+                'followBackCreate', // Different type for clarity
+                requestingUser,
+                '/follow_Users', // Endpoint to create A -> B
+                { follower_username: username, followed_username: requestingUser },
+                `Follow request sent to ${requestingUser}.`, // Intermediate message (will be overwritten)
+                `Accepted request, but failed to initiate follow back to ${requestingUser}.`
+            );
+            followBackCreated = true;
+        } catch (error) {
+            console.error("Error during Step 2 (Create A->B):", error);
+            followBackCreated = false;
+            // Error message shown by handleAction
+            // Don't necessarily stop here, maybe Step 3 can still clean up if needed,
+            // but likely it will fail too if Step 2 failed.
+        }
+    }
+
+    // --- Step 3: Accept the follow-back request (A -> B) ---
+    if (followBackCreated) { // Only proceed if A->B record was likely created
+        try {
+            await handleAction(
+                'acceptFollowBack', // Different type for clarity
+                requestingUser,
+                '/accept_follow_request', // Endpoint to accept A -> B
+                { follower_username: username, followed_username: requestingUser }, // Note: follower is current user now
+                `Accepted ${requestingUser} and followed back. You are now friends.`, // Final success message
+                `Failed to auto-accept follow back for ${requestingUser}.`
+            );
+        } catch (error) {
+             console.error("Error during Step 3 (Accept A->B):", error);
+             // Error message shown by handleAction
+             showInAppMessage(`Follow back for ${requestingUser} may require manual acceptance.`, 'error');
+        }
+    } else if (acceptSuccess) {
+        // If Step 1 succeeded but Step 2 failed, inform the user
+         showInAppMessage(`Accepted ${requestingUser}'s request, but could not automatically follow back.`, 'error');
+    }
+
+    // Note: fetchAllConnectionData is called inside handleAction on success of each step.
+    // The final call after Step 3 (if successful) should show the mutual state.
+ };
+
+
+
+ const handleRejectRequest = (requestingUser: string) => {
+     if (!username) return;
+     handleAction(
+        'rejectRequest', requestingUser, '/reject_follow_request',
+        { follower_username: requestingUser, followed_username: username },
+        `Rejected ${requestingUser}'s friend request.`,
+        'Failed to reject friend request.'
+    );
+ };
+
+ // Uses Modal instead of Alert
+ const handleRemoveFriend = (friendUsername: string) => {
+     if (!username) return;
+     console.log(`[handleRemoveFriend] Initiating removal for: ${friendUsername}`);
+     setUserToRemove(friendUsername);
+     setShowConfirmRemoveDialog(true);
+ };
+
+ // Handler for confirming removal from modal - attempts mutual removal
+ const confirmRemoveFriend = async () => {
+    if (!userToRemove || !username) return;
+
+    const targetUsername = userToRemove; // Store in temp variable before state is cleared
+
+    setShowConfirmRemoveDialog(false); // Hide dialog immediately
+    setUserToRemove(null); // Clear the user state
+
+    console.log(`[confirmRemoveFriend] Attempting mutual removal for: ${targetUsername}`);
+
+    // --- Step 1: Remove current user's follow (A -> B) ---
+    let removeStep1Success = false;
+    try {
+        await handleAction(
+            'removeFriend', // actionType
+            targetUsername, // targetUsername for loading state
+            '/remove_follow_Users', // apiEndpoint
+            { follower_username: username, followed_username: targetUsername }, // body
+            `Removed ${targetUsername} from friends.`, // Primary success message
+            `Failed to remove ${targetUsername}.` // Error for this step
+        );
+        removeStep1Success = true; // Assume okay if no exception
+    } catch (error) {
+        console.error(`[confirmRemoveFriend] Error during remove step 1 (A->B) for ${targetUsername}:`, error);
+        // Error message shown by handleAction
+        removeStep1Success = false;
+    }
+
+    // --- Step 2: Attempt to remove the other user's follow (B -> A) ---
+    // We attempt this regardless of step 1's specific backend outcome,
+    // as the goal is to ensure the connection is broken from both sides if possible.
+    // The backend handles cases where the follow doesn't exist.
+    console.log(`[confirmRemoveFriend] Attempting reverse removal (B->A) for ${targetUsername}.`);
+    try {
+        await handleAction(
+            'removeFriendReverse', // Different actionType for logging clarity
+            targetUsername, // Keep loading tied to the target user visually
+            '/remove_follow_Users', // Same endpoint
+            { follower_username: targetUsername, followed_username: username }, // Reversed body
+            `Removed ${targetUsername} from friends (mutual).`, // Optional more specific success message if needed
+            `Failed to remove reverse connection for ${targetUsername}.` // Specific error message
+        );
+        // If the first message was already shown, the second success message might be redundant.
+        // Consider making the second handleAction call silent on success if preferred.
+    } catch (error) {
+         console.error(`[confirmRemoveFriend] Error during remove step 2 (B->A) for ${targetUsername}:`, error);
+         // Error message shown by handleAction
+         // If step 1 succeeded but step 2 failed, the removal is only partial.
+         if (removeStep1Success) {
+             showInAppMessage(`Removed ${targetUsername}, but failed to remove reverse connection.`, 'error');
+         }
+    }
+
+    // Note: fetchAllConnectionData is called inside handleAction on success of *each* step,
+    // so the list should reflect the final state after both attempts.
+ };
+
+
+ const cancelRemoveFriend = () => {
+    console.log('[cancelRemoveFriend] Cancelled removal.');
+    setShowConfirmRemoveDialog(false);
+    setUserToRemove(null);
+ };
+
+
+   // --- Search Functionality ---
+   const searchUser = useCallback(async (query: string) => {
+     const trimmedQuery = query.trim();
+     if (trimmedQuery.length === 0) {
+       setSearchResults([]);
+       setHasSearched(false);
+       return;
+     }
+     setSearchLoading(true);
+     setHasSearched(true);
+     try {
+       const response = await fetch(`${domaindynamo}/get-similar_users_searched`, {
+         method: 'POST', headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ username: trimmedQuery }),
+       });
+       const data = await response.json();
+       if (response.ok && data.status === 'Success' && Array.isArray(data.similar_users)) {
+         const filteredUsers = data.similar_users.filter((uname: string) => uname !== username);
+         const results: Friend[] = await Promise.all(
+           filteredUsers.map(async (uname: string) => ({
+             username: uname,
+             profile_picture: await fetchUserProfilePicture(uname),
+           }))
+         );
+         setSearchResults(results);
+       } else {
+         setSearchResults([]);
+         if (data.message && data.message !== 'No similar users found.') {
+             console.warn("Search error:", data.message);
+         } else if (!response.ok) {
+             console.warn("Search error:", `Status: ${response.status}`);
+         }
+       }
+     } catch (error: any) {
+       console.error('Error searching users:', error);
+       showInAppMessage(`Search failed: ${error.message || 'Network error'}`, 'error');
+       setSearchResults([]);
+     } finally {
+       setSearchLoading(false);
+     }
+   }, [username, domaindynamo, showInAppMessage]);
+
+    const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
+    const handleSearchTextChange = (text: string) => {
+        setSearchUsername(text);
+        if (debounceTimeout.current) { clearTimeout(debounceTimeout.current); }
+        debounceTimeout.current = setTimeout(() => {
+            searchUser(text);
+        }, 500);
+    };
+
+   // --- Sub Tab Change Handler ---
+   const handleSubTabChange = (subTab: SubTab) => {
+       setActiveSubTab(subTab);
+       setSearchUsername('');
+       setSearchResults([]);
+       setHasSearched(false);
+       Keyboard.dismiss();
+   };
+
+
+  // --- Render Helpers ---
+  const renderUserCard = (
+      item: Friend,
+      actions: React.ReactNode,
+      statusText?: string,
+      statusColor?: string
+    ) => (
+    <View style={styles.userCard}>
+      <Image source={{ uri: item.profile_picture || defaultPFP }} style={styles.profileImage} />
+      <View style={styles.userInfo}>
+          <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">{item.username}</Text>
+          {statusText && <Text style={[styles.statusText, { color: statusColor || currentTheme.textSecondary }]}>{statusText}</Text>}
       </View>
-      <View style={styles.actionGroup}>
-        <TouchableOpacity style={[styles.actionButton, styles.acceptButton]} onPress={() => handleAcceptRequest(item.username)}>
-          <Ionicons name="checkmark" size={24} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionButton, styles.rejectButton]} onPress={() => handleRejectRequest(item.username)}>
-          <Ionicons name="close" size={24} color="#fff" />
-        </TouchableOpacity>
+      <View style={styles.userActions}>
+          {actions}
       </View>
     </View>
   );
 
-  const renderSentRequestCard = ({ item }: { item: Friend }) => (
-    <View style={styles.card}>
-      <View style={styles.cardContent}>
-        <Image source={{ uri: item.profile_picture }} style={styles.profileImage} />
-        <Text style={styles.userName}>{item.username}</Text>
-        <Text style={styles.pendingText}>Pending</Text>
-      </View>
-      <View style={styles.actionGroup}>
-        <TouchableOpacity style={[styles.actionButton, styles.rejectButton]} onPress={() => handleCancelRequest(item.username)}>
-          <Ionicons name="close" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </View>
+  const renderReceivedRequestCard = ({ item }: { item: Friend }) => renderUserCard(item,
+    <>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.success }]} onPress={() => handleAcceptRequest(item.username)} disabled={actionLoading[item.username]}>
+        {actionLoading[item.username] ? <ActivityIndicator size="small" color={currentTheme.successContrast} /> : <Icon name="checkmark-outline" size={18} color={currentTheme.successContrast} />}
+      </TouchableOpacity>
+      <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.destructive }]} onPress={() => handleRejectRequest(item.username)} disabled={actionLoading[item.username]}>
+         {actionLoading[item.username] ? <ActivityIndicator size="small" color={currentTheme.destructiveContrast} /> : <Icon name="close-outline" size={18} color={currentTheme.destructiveContrast} />}
+      </TouchableOpacity>
+    </>
   );
 
-  // Compute accepted friends from friends list minus pending
-  const acceptedFriends = friends.filter(
-    friend =>
-      !pendingIncoming.some(u => u.username === friend.username) &&
-      !pendingOutgoing.some(u => u.username === friend.username)
-  );
-
-  const renderFriendCard = ({ item }: { item: Friend }) => (
-    <View style={styles.card}>
-      <View style={styles.cardContent}>
-        <Image source={{ uri: item.profile_picture }} style={styles.profileImage} />
-        <Text style={styles.userName}>{item.username}</Text>
-      </View>
-      <View style={styles.actionGroup}>
-        <TouchableOpacity style={[styles.actionButton, styles.removeButton]} onPress={() => handleRemoveFriend(item.username)}>
-          <Ionicons name="trash" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </View>
+  const renderFriendCard = ({ item }: { item: Friend }) => renderUserCard(item,
+    <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.buttonSecondaryBackground }]} onPress={() => handleRemoveFriend(item.username)} disabled={actionLoading[item.username]}>
+      {actionLoading[item.username] ? <ActivityIndicator size="small" color={currentTheme.buttonSecondaryText} /> : <Icon name="person-remove-outline" size={18} color={currentTheme.destructive} />}
+    </TouchableOpacity>
   );
 
   const renderSearchResultCard = ({ item }: { item: Friend }) => {
+    const isFriend = friends.some(u => u.username === item.username);
     const isSent = pendingOutgoing.some(u => u.username === item.username);
-    const isFriend = acceptedFriends.some(u => u.username === item.username);
     const isReceived = pendingIncoming.some(u => u.username === item.username);
-    return (
-      <View style={styles.card}>
-        <View style={styles.cardContent}>
-          <Image source={{ uri: item.profile_picture }} style={styles.profileImage} />
-          <Text style={styles.userName}>{item.username}</Text>
-        </View>
-        {(isFriend || isSent || isReceived) ? (
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#7F8C8D' }]} disabled>
-            {isSent ? (
-              <Ionicons name="time-outline" size={24} color="#fff" />
-            ) : (
-              <Ionicons name="person" size={24} color="#fff" />
-            )}
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={[styles.actionButton, { backgroundColor: '#2980B9' }]} onPress={() => handleAddFriend(item.username)} disabled={followRequestLoading[item.username]}>
-            {followRequestLoading[item.username] ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons name="person-add" size={24} color="#fff" />
-            )}
-          </TouchableOpacity>
-        )}
-      </View>
-    );
+    const isLoading = actionLoading[item.username];
+
+    let statusText = '';
+    let statusColor = currentTheme.textSecondary;
+    let actionButton: React.ReactNode = null;
+
+    if (isFriend) {
+        statusText = 'Friends';
+        actionButton = (
+             <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.buttonSecondaryBackground }]} disabled={true} >
+                <Icon name="checkmark-done-outline" size={18} color={currentTheme.success} />
+            </TouchableOpacity>
+        );
+    } else if (isSent) {
+        statusText = 'Request Sent';
+        statusColor = currentTheme.info;
+         actionButton = (
+             <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.destructive }]} onPress={() => handleCancelRequest(item.username)} disabled={isLoading} >
+                {isLoading ? <ActivityIndicator size="small" color={currentTheme.destructiveContrast} /> : <Icon name="close-outline" size={18} color={currentTheme.destructiveContrast} />}
+            </TouchableOpacity>
+        );
+    } else if (isReceived) {
+        statusText = 'Friend Request Received';
+        statusColor = currentTheme.info;
+         actionButton = (
+             <View style={{flexDirection: 'row', gap: styles.userActions.gap}}>
+                 <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.success }]} onPress={() => handleAcceptRequest(item.username)} disabled={isLoading} >
+                    {isLoading ? <ActivityIndicator size="small" color={currentTheme.successContrast} /> : <Icon name="checkmark-outline" size={18} color={currentTheme.successContrast} />}
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.destructive }]} onPress={() => handleRejectRequest(item.username)} disabled={isLoading} >
+                    {isLoading ? <ActivityIndicator size="small" color={currentTheme.destructiveContrast} /> : <Icon name="close-outline" size={18} color={currentTheme.destructiveContrast} />}
+                </TouchableOpacity>
+             </View>
+        );
+    } else {
+        actionButton = (
+             <TouchableOpacity style={[styles.actionButton, { backgroundColor: currentTheme.accent }]} onPress={() => handleAddFriend(item.username)} disabled={isLoading} >
+                {isLoading ? <ActivityIndicator size="small" color={currentTheme.accentContrast} /> : <Icon name="person-add-outline" size={18} color={currentTheme.accentContrast} />}
+            </TouchableOpacity>
+        );
+    }
+
+    return renderUserCard(item, actionButton, statusText, statusColor);
   };
 
-  // ---------------------------
-  // Main Render
-  // ---------------------------
+
+  // Determine which data list and render function to use
+  let currentData: Friend[] = [];
+  let renderFunction: ({ item }: { item: Friend }) => JSX.Element | null;
+  let emptyText = "No users found.";
+
+  if (hasSearched) {
+      currentData = searchResults;
+      renderFunction = renderSearchResultCard;
+      emptyText = searchLoading ? "Searching..." : "No users found matching your search.";
+  } else {
+      switch (activeSubTab) {
+          case 'Requests':
+              currentData = pendingIncoming;
+              renderFunction = renderReceivedRequestCard;
+              emptyText = "No pending friend requests.";
+              break;
+          case 'Friends':
+          default:
+              currentData = friends;
+              renderFunction = renderFriendCard;
+              emptyText = "You haven't added any friends yet.\nSearch to find friends!";
+              break;
+      }
+  }
+
+
+  // --- Main Render ---
   return (
-    <View style={[styles.container, { backgroundColor: isDarkTheme ? '#121212' : '#F7F9FA' }]}>
-      <ScrollView
-        style={{ flex: 1 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={async () => {
-              setLoading(true);
-              await refreshAll();
-            }}
-            colors={['#6C63FF']}
-            tintColor={isDarkTheme ? '#121212' : '#2C3E50'}
-          />
-        }
-      >
-
-        {/* Main Tabs */}
-        <View style={styles.tabsWrapper}>
-          <View style={styles.tabsContainer}>
-            {(['Friends', 'Reposts'] as const).map(tab => (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tabButton, activeTab === tab && styles.activeTabButton]}
-                onPress={() => handleTabChange(tab)}
-              >
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {activeTab === 'Reposts' ? (
-          <RepostFeedPage />
-        ) : (
-          <View style={styles.contentWrapper}>
-            {searchUsername.trim().length > 0 ? (
-              <View>
-                <Text style={styles.sectionTitle}>Search Results</Text>
-                {searchLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#6C63FF" />
-                    <Text style={styles.loadingText}>Searching...</Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={searchResults}
-                    keyExtractor={(item) => item.username}
-                    renderItem={renderSearchResultCard}
-                    contentContainerStyle={styles.listContainer}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No users found.</Text>}
-                  />
-                )}
-              </View>
-            ) : (
-              <View>
-                {/* Friends Subtabs */}
-                <View style={styles.subTabsContainer}>
-                  {(['Received', 'Sent', 'Accepted'] as FriendsSubTab[]).map(subtab => (
-                    <TouchableOpacity
-                      key={subtab}
-                      style={[styles.subTabButton, activeSubTab === subtab && styles.activeSubTabButton]}
-                      onPress={() => handleSubTabChange(subtab)}
-                    >
-                      <Text style={[styles.subTabText, activeSubTab === subtab && styles.activeSubTabText]}>
-                        {subtab}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                {activeSubTab === 'Received' && (
-                  <FlatList
-                    data={pendingIncoming}
-                    renderItem={renderReceivedRequestCard}
-                    keyExtractor={(item) => item.username}
-                    contentContainerStyle={styles.listContainer}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No received requests.</Text>}
-                  />
-                )}
-                {activeSubTab === 'Sent' && (
-                  <FlatList
-                    data={pendingOutgoing}
-                    renderItem={renderSentRequestCard}
-                    keyExtractor={(item) => item.username}
-                    contentContainerStyle={styles.listContainer}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No sent requests.</Text>}
-                  />
-                )}
-                {activeSubTab === 'Accepted' && (
-                  <FlatList
-                    data={acceptedFriends}
-                    renderItem={renderFriendCard}
-                    keyExtractor={(item) => item.username}
-                    contentContainerStyle={styles.listContainer}
-                    ListEmptyComponent={<Text style={styles.emptyText}>No friends yet. Search and add some!</Text>}
-                  />
-                )}
-              </View>
-            )}
-
-            {/* Search Bar */}
-            <View style={styles.searchBar}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
+      {/* Search Bar */}
+      <View style={[styles.searchContainer]}>
+          <View style={[styles.searchBar, { backgroundColor: currentTheme.inputBackground, borderColor: currentTheme.borderColor }]}>
+              <Icon name="search-outline" size={18} color={currentTheme.textSecondary} style={{ marginRight: 6 }}/>
               <TextInput
-                style={styles.searchInput}
-                placeholder="Search for a user..."
-                placeholderTextColor={isDarkTheme ? '#A0A0A0' : '#95A5A6'}
-                value={searchUsername}
-                onChangeText={(text) => {
-                  setSearchUsername(text);
-                  searchUser(text);
-                }}
+                  style={[styles.searchInput, { color: currentTheme.textPrimary }]}
+                  placeholder="Search users to add..."
+                  placeholderTextColor={currentTheme.textSecondary}
+                  value={searchUsername}
+                  onChangeText={handleSearchTextChange}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  onFocus={() => setHasSearched(true)}
               />
-            </View>
+              {searchLoading && <ActivityIndicator size="small" color={currentTheme.accent} style={{ marginLeft: 6 }}/>}
+              {searchUsername.length > 0 && !searchLoading && (
+                   <TouchableOpacity onPress={() => { handleSearchTextChange(''); Keyboard.dismiss(); }} style={{ padding: 4, marginLeft: 6 }}>
+                      <Icon name="close-circle" size={18} color={currentTheme.textTertiary} />
+                  </TouchableOpacity>
+              )}
           </View>
-        )}
+      </View>
 
+      {/* Content Area */}
+      <View style={styles.contentWrapper}>
+          {/* Sub Tabs (only show if not searching) */}
+          {!hasSearched && (
+              <View style={styles.subTabsContainer}>
+                {(['Friends', 'Requests'] as SubTab[]).map(subtab => (
+                  <TouchableOpacity
+                    key={subtab}
+                    style={[
+                        styles.subTabButton,
+                        activeSubTab === subtab && { borderBottomColor: currentTheme.subTabIndicator, borderBottomWidth: 2 }
+                    ]}
+                    onPress={() => handleSubTabChange(subtab)}
+                  >
+                    <Text style={[
+                        styles.subTabText,
+                        { color: activeSubTab === subtab ? currentTheme.subTabTextActive : currentTheme.subTabTextInactive },
+                    ]}>
+                      {subtab === 'Requests' && pendingIncoming.length > 0
+                        ? `${subtab} (${pendingIncoming.length})`
+                        : subtab}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+          )}
 
-      </ScrollView>
-    </View>
+          {/* List Area */}
+          {loading && !refreshing ? (
+               <View style={styles.feedbackContainer}>
+                  <ActivityIndicator size="large" color={currentTheme.accent} />
+               </View>
+          ) : (
+               <FlatList
+                  ref={flatListRef}
+                  data={currentData}
+                  renderItem={renderFunction}
+                  keyExtractor={(item) => item.username}
+                  contentContainerStyle={styles.listContainer}
+                  ListEmptyComponent={
+                      searchLoading && hasSearched ? (
+                           <View style={styles.feedbackContainer}>
+                              <ActivityIndicator size="large" color={currentTheme.accent} />
+                           </View>
+                      ) : (
+                           <View style={styles.feedbackContainer}>
+                              <Icon name={hasSearched ? "search-outline" : (activeSubTab === 'Friends' ? "people-outline" : "mail-unread-outline")} size={40} color={currentTheme.textTertiary} />
+                              <Text style={[styles.emptyText, { color: currentTheme.textSecondary }]}>{emptyText}</Text>
+                          </View>
+                      )
+                  }
+                  refreshControl={
+                      <RefreshControl
+                          refreshing={refreshing}
+                          onRefresh={onRefresh}
+                          tintColor={currentTheme.accent}
+                          colors={[currentTheme.accent]}
+                      />
+                  }
+                  onScrollBeginDrag={Keyboard.dismiss}
+                  keyboardShouldPersistTaps="handled"
+              />
+          )}
+      </View>
+
+       {/* In-App Message Display */}
+       <InAppMessage
+            visible={messageVisible}
+            message={messageText}
+            type={messageType}
+            onClose={() => setMessageVisible(false)}
+        />
+
+       {/* Confirmation Modal for Removing Friend */}
+       <Modal
+            animationType="fade"
+            transparent={true}
+            visible={showConfirmRemoveDialog}
+            onRequestClose={cancelRemoveFriend}
+        >
+            <View style={[styles.modalBackdrop, { backgroundColor: currentTheme.modalBackdrop }]}>
+                <View style={[styles.modalContainer, { backgroundColor: currentTheme.modalBackground }]}>
+                    <Text style={[styles.modalTitle, { color: currentTheme.textPrimary }]}>Remove Friend</Text>
+                    <Text style={[styles.modalMessage, { color: currentTheme.textSecondary }]}>
+                        Are you sure you want to remove {userToRemove} as a friend?
+                    </Text>
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity
+                            style={[styles.modalButton, styles.modalCancelButton]}
+                            onPress={cancelRemoveFriend}
+                        >
+                            <Text style={[styles.modalButtonText, { color: currentTheme.textSecondary }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.modalButton, styles.modalConfirmButton, { backgroundColor: currentTheme.destructive }]}
+                            onPress={confirmRemoveFriend}
+                        >
+                            <Text style={[styles.modalButtonText, { color: currentTheme.destructiveContrast }]}>Remove</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+       </Modal>
+
+    </SafeAreaView>
   );
 };
 
-export default FollowingPage;
+export default ConnectionsPage;
 
 // ------------------------------------------------------
-// STYLES
+// STYLES (Complete)
 // ------------------------------------------------------
-const getStyles = (isDarkTheme: boolean) =>
-StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: Platform.OS === 'ios' ? 60 : 20,
-  },
-  tabsWrapper: {
-    marginHorizontal: 16,
-    marginBottom: 12,
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    borderRadius: 30,
-    overflow: 'hidden',
-    borderWidth: 1,
-     borderColor: isDarkTheme ? '#374151' : '#CED6E0',
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    backgroundColor: isDarkTheme ? '#1C1C1E' : '#F1F2F6',
-    alignItems: 'center',
-  },
-  activeTabButton: {
-    backgroundColor: '#1E90FF',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: isDarkTheme ? '#D1D5DB' : '#57606F',
-  },
-  activeTabText: {
-    color: '#fff',
-  },
-  contentWrapper: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingBottom: 30,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 10,
-    color: isDarkTheme ? '#F3F4F6' : '#2F3542',
-  },
-  subTabsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: isDarkTheme ? '#1C1C1E' : '#F1F2F6',
-    borderRadius: 20,
-    marginBottom: 12,
-  },
-  subTabButton: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  activeSubTabButton: {
-    backgroundColor: '#1E90FF',
-    borderRadius: 20,
-  },
-  subTabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: isDarkTheme ? '#D1D5DB' : '#57606F',
-  },
-  activeSubTabText: {
-    color: '#fff',
-  },
-  listContainer: {
-    paddingBottom: 12,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    marginVertical: 6,
-    borderRadius: 10,
-    backgroundColor: isDarkTheme ? '#1C1C1E' : '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  profileImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    borderColor: '#1E90FF',
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 12,
-    color: isDarkTheme ? '#F3F4F6' : '#2F3542',
-  },
-  pendingText: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    marginLeft: 8,
-    color: '#F39C12',
-  },
-  actionGroup: {
-    flexDirection: 'row',
-    marginLeft: 8,
-  },
-  actionButton: {
-    marginLeft: 8,
-    padding: 6,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  acceptButton: {
-    backgroundColor: '#28A745',
-  },
-  rejectButton: {
-    backgroundColor: '#DC3545',
-  },
-  removeButton: {
-    backgroundColor: '#DC3545',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-     borderColor: isDarkTheme ? '#374151' : '#CED6E0',
-    borderRadius: 25,
-    paddingHorizontal: 16,
-    height: 44,
-    marginTop: 12,
-    backgroundColor: isDarkTheme ? '#1C1C1E' : '#fff',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: isDarkTheme ? '#D1D5DB' : '#2F3542',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 10,
-  },
-  loadingText: {
-    fontSize: 16,
-    marginLeft: 8,
-    color: isDarkTheme ? '#D1D5DB' : '#57606F',
-  },
-  emptyText: {
-    textAlign: 'center',
-    fontSize: 16,
-    marginVertical: 8,
-    fontStyle: 'italic',
-    color: isDarkTheme ? '#D1D5DB' : '#57606F',
-  },
-  sliderWrapper: {
-    paddingHorizontal: 16,
-    marginVertical: 12,
-  },
-  sliderLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 6,
-    color: isDarkTheme ? '#D1D5DB' : '#2F3542',
-  },
-  sliderContainer: {
-    height: 20,
-    width: 200,
-    backgroundColor: isDarkTheme ? '#374151' : '#CED6E0',
-    backgroundColor: '#CED6E0',
-    borderRadius: 10,
-    position: 'relative',
-    alignSelf: 'flex-end',
-  },
-  sliderTrack: {
-    position: 'absolute',
-    left: 0,
-    width: 200,
-    height: 20,
-  },
-  sliderKnob: {
-    position: 'absolute',
-    top: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FF4757',
-  },
-});
-
+const getStyles = (currentTheme: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+    },
+    searchContainer: {
+        paddingTop: Platform.OS === 'ios' ? 10 : 15,
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+    },
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderRadius: 8,
+      paddingHorizontal: 10,
+      height: 40,
+      borderWidth: 1,
+      borderColor: currentTheme.borderColor,
+      backgroundColor: currentTheme.inputBackground,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: fontSizes.base,
+      marginLeft: 6,
+      color: currentTheme.textPrimary,
+    },
+    contentWrapper: {
+      flex: 1,
+    },
+    subTabsContainer: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: currentTheme.borderColor,
+    },
+    subTabButton: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: 'center',
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    subTabText: {
+      fontSize: fontSizes.base,
+      fontWeight: '600',
+    },
+    listContainer: {
+      paddingHorizontal: 16,
+      paddingBottom: 80,
+    },
+    userCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: currentTheme.borderColor,
+    },
+    profileImage: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: currentTheme.placeholder
+    },
+    userInfo: {
+        flex: 1,
+        marginLeft: 10,
+        justifyContent: 'center',
+    },
+    userName: {
+      fontSize: fontSizes.base,
+      fontWeight: '600',
+      color: currentTheme.textPrimary,
+    },
+    statusText: {
+        fontSize: fontSizes.small,
+        marginTop: 1,
+        color: currentTheme.textSecondary,
+    },
+    userActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    actionButton: {
+      padding: 6,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+      minWidth: 36,
+      minHeight: 36,
+    },
+    feedbackContainer: {
+        flex: 1,
+        paddingVertical: 30,
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 150,
+    },
+    emptyText: {
+        textAlign: 'center',
+        fontSize: fontSizes.base,
+        marginTop: 8,
+        color: currentTheme.textSecondary,
+        lineHeight: fontSizes.base * 1.4,
+    },
+     retryButton: {
+      marginTop: 16,
+      paddingHorizontal: 20,
+      paddingVertical: 8,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: currentTheme.accent,
+     },
+     retryButtonText: {
+      fontSize: fontSizes.button,
+      fontWeight: '600',
+      color: currentTheme.accent,
+     },
+    modalBackdrop: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: currentTheme.modalBackdrop, // Use theme color
+    },
+    modalContainer: {
+        width: '85%',
+        maxWidth: 350,
+        borderRadius: 12,
+        padding: 20,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+        backgroundColor: currentTheme.modalBackground, // Use theme color
+    },
+    modalTitle: {
+        fontSize: fontSizes.large,
+        fontWeight: 'bold',
+        marginBottom: 10,
+        color: currentTheme.textPrimary, // Use theme color
+    },
+    modalMessage: {
+        fontSize: fontSizes.base,
+        textAlign: 'center',
+        marginBottom: 25,
+        lineHeight: fontSizes.base * 1.5,
+        color: currentTheme.textSecondary, // Use theme color
+    },
+    modalActions: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    modalButton: {
+        flex: 1,
+        paddingVertical: 10,
+        paddingHorizontal: 15,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginHorizontal: 5,
+    },
+    modalCancelButton: {
+        backgroundColor: currentTheme.buttonSecondaryBackground,
+        borderWidth: 1,
+        borderColor: currentTheme.borderColor,
+    },
+    modalConfirmButton: {
+        backgroundColor: currentTheme.destructive, // Use theme color
+    },
+    modalButtonText: {
+        fontSize: fontSizes.button,
+        fontWeight: '600',
+        // color applied inline via theme
+    },
+  });
