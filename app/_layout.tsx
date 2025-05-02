@@ -1,169 +1,191 @@
-// app/Layout.tsx
-import React, { useContext, useState, useCallback } from 'react';
+// app/Layout.tsx (Simplified Navigation + Hooks Fixed)
+
+import React, { useContext, useState, useCallback, useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Slot, usePathname, useRouter } from 'expo-router';
-import { UserProvider, UserContext } from './UserContext';
-import { ContentChoiceProvider, ContentChoiceContext } from './contentchoice';
-import { ScrollProvider, ScrollContext } from './ScrollContext';
+// Import useGlobalSearchParams for reliable param reading in Layout
+import { Slot, usePathname, useRouter, useGlobalSearchParams } from 'expo-router';
+import { UserProvider, UserContext } from './UserContext'; // Adjust path if needed
+import { ScrollProvider, ScrollContext } from './ScrollContext'; // Adjust path if needed
 import ChronicallyButton from '../components/ui/ChronicallyButton'; // Adjust path if needed
-import InAppMessage from '../components/ui/InAppMessage';
+import InAppMessage from '../components/ui/InAppMessage'; // Adjust path if needed
 
 export default function Layout() {
-  // State for In-App Message
+  // State for In-App Message (remains the same)
   const [messageVisible, setMessageVisible] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [messageType, setMessageType] = useState<'info' | 'error' | 'success'>('info');
 
-  // Function to show the message (defined here to access state)
+  // Function to show the message (remains the same)
   const showLoginMessage = useCallback(() => {
     setMessageText("Please log in to access this feature.");
     setMessageType('info');
     setMessageVisible(true);
-  }, []); // No dependencies needed
+  }, []);
 
   return (
     <UserProvider>
-      <ContentChoiceProvider>
-        <ScrollProvider>
-          <View style={styles.container}>
-            <View style={styles.content}>
-              <Slot />
-            </View>
-            {/* Pass showLoginMessage down as a prop */}
-            <PersistentBottomBar showLoginMessage={showLoginMessage} />
+      <ScrollProvider>
+        <View style={styles.container}>
+          <View style={styles.content}>
+            {/* Renders the current matching route */}
+            <Slot />
           </View>
-          {/* Render InAppMessage overlay here */}
-          <InAppMessage
-              visible={messageVisible}
-              message={messageText}
-              type={messageType}
-              onClose={() => setMessageVisible(false)}
-          />
-        </ScrollProvider>
-      </ContentChoiceProvider>
+          {/* Persistent Bottom Bar only renders if allowed by its internal logic */}
+          <PersistentBottomBar showLoginMessage={showLoginMessage} />
+        </View>
+        {/* In-App Message overlay */}
+        <InAppMessage
+            visible={messageVisible}
+            message={messageText}
+            type={messageType}
+            onClose={() => setMessageVisible(false)}
+        />
+      </ScrollProvider>
     </UserProvider>
   );
 }
 
 // --- Props for PersistentBottomBar ---
 interface PersistentBottomBarProps {
-    showLoginMessage: () => void; // Expect the function as a prop
+    showLoginMessage: () => void;
 }
 
 /**
- * PersistentBottomBar remains visible on allowed routes only.
+ * PersistentBottomBar: Renders the bottom navigation, handles active state,
+ * and controls its own visibility based on allowed routes.
  */
 function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
+  // --- Hooks (Called Unconditionally at Top) ---
   const router = useRouter();
   const pathname = usePathname();
-  const { contentChoice, setContentChoice } = useContext(ContentChoiceContext);
+  const params = useGlobalSearchParams<{ feed?: string }>(); // Use global params
   const { isDarkTheme, userToken } = useContext(UserContext);
   const { scrollToTop } = useContext(ScrollContext);
 
-  // *** Add '/repostfeed' to allowed paths ***
-  const allowedPaths = ['/', '/savedarticles', '/followingpage', '/repostfeed']; // Assuming '/repostfeed' is the route
-  if (!allowedPaths.includes(pathname)) {
-    return null;
-  }
+  // State to track the intended active tab ('home' or 'trending') specifically for the '/' route
+  const [homeScreenTab, setHomeScreenTab] = useState<'home' | 'trending'>('home');
 
-  // Determine active tab based on pathname or context
-  // *** Updated type to include 'feed' ***
-  let activeTab: 'home' | 'trending' | 'saved' | 'feed' | 'friends';
+  // Effect to synchronize internal state ('home'/'trending') with URL parameters
+  // This handles initial load based on URL and external navigation changes.
+  useEffect(() => {
+    let targetTab: 'home' | 'trending' = 'home'; // Default to home
+    // Only check params if we are on the root path
+    if (pathname === '/' && params.feed === 'trending') {
+      targetTab = 'trending';
+    }
+
+    // Update the internal state only if it differs from what the URL suggests for the '/' path
+    if (pathname === '/' && targetTab !== homeScreenTab) {
+        console.log(`[Layout Effect] Syncing homeScreenTab state from param. Param: ${params.feed}, Setting state to: ${targetTab}`);
+        setHomeScreenTab(targetTab);
+    }
+    // Note: If navigating away from '/', homeScreenTab retains its last value,
+    // but the `activeTab` calculation below will prioritize pathname for other routes.
+  }, [pathname, params.feed, homeScreenTab]); // Dependencies for the sync effect
+
+
+  // --- VISIBILITY CHECK (Performed AFTER Hooks) ---
+  // Define paths where the bottom bar should be visible
+  const allowedPaths = ['/', '/savedarticles', '/myprofile']; // Updated list
+  console.log(`[PersistentBottomBar] Checking visibility for pathname: "${pathname}"`);
+
+  // Check if the exact path is allowed OR if it starts with an allowed path (e.g., /myprofile/edit)
+  const isAllowed = allowedPaths.includes(pathname) ||
+                    allowedPaths.some(allowedPath => allowedPath !== '/' && pathname.startsWith(allowedPath));
+
+  if (!isAllowed) {
+    console.log(`[PersistentBottomBar] Pathname "${pathname}" NOT allowed. Hiding button.`);
+    return null; // Hide the button if the path is not allowed
+  }
+  console.log(`[PersistentBottomBar] Pathname "${pathname}" IS allowed. Rendering button.`);
+  // --- END VISIBILITY CHECK ---
+
+
+  // --- Determine activeTab prop for ChronicallyButton ---
+  // Updated type definition
+  let activeTab: 'home' | 'trending' | 'saved' | 'profile';
+
   if (pathname.startsWith('/savedarticles')) {
     activeTab = 'saved';
-  } else if (pathname.startsWith('/followingpage')) { // This route name might change if the file was renamed
-    activeTab = 'friends';
-  } else if (pathname.startsWith('/repostfeed')) { // *** Check for feed route ***
-     activeTab = 'feed';
+  } else if (pathname.startsWith('/myprofile')) { // Check for profile path
+    activeTab = 'profile';
+  } else if (pathname === '/') {
+    activeTab = homeScreenTab; // Use internal state for '/' route highlighting
   } else {
-    // Use contentChoice for home/trending distinction only on the '/' path
-    activeTab = pathname === '/' && contentChoice.toLowerCase() === 'trending' ? 'trending' : 'home';
+    activeTab = 'home'; // Fallback for any unexpected allowed paths
   }
 
+  console.log(`[PersistentBottomBar] Rendering button. Path: ${pathname}, Param Feed: ${params.feed}, State Tab: ${homeScreenTab}, Determined activeTab Prop: ${activeTab}`);
 
+  // --- Handlers (Updated) ---
   const handleHomePress = () => {
-    if (contentChoice !== 'All' || pathname !== '/') {
-        setContentChoice('All');
-    }
-    router.push({ pathname: '/', params: {} });
+    console.log("handleHomePress called");
+    setHomeScreenTab('home'); // Update internal state
+    router.push({ pathname: '/', params: { feed: 'forYou' } }); // Navigate & set param
   };
 
   const handleTrendingPress = () => {
-     if (contentChoice !== 'Trending' || pathname !== '/') {
-        setContentChoice('Trending');
-     }
-    router.push({ pathname: '/', params: {} });
+    console.log("handleTrendingPress called");
+    setHomeScreenTab('trending'); // Update internal state
+    router.push({ pathname: '/', params: { feed: 'trending' } }); // Navigate & set param
   };
 
   const handleBookmarkPress = () => {
+    if (!userToken) { showLoginMessage(); } else { router.push('/savedarticles'); }
+  };
+
+  // Removed handleFeedPress, handleFriendsPress
+
+  // New handler for Profile
+  const handleProfilePress = () => {
     if (!userToken) {
       showLoginMessage();
     } else {
-      router.push('/savedarticles');
+      router.push('/myprofile'); // Navigate to profile page
     }
   };
 
-  // *** New handler for the Feed tab ***
-  const handleFeedPress = () => {
-    // Assuming Feed requires login
-    if (!userToken) {
-        showLoginMessage();
-    } else {
-        router.push('/repostfeed'); // Navigate to the feed page route
-    }
-  };
-
-  // *** Renamed handler for the Friends tab ***
-  const handleFriendsPress = () => {
-    if (!userToken) {
-      showLoginMessage();
-    } else {
-      // Ensure this route matches the actual filename/route for the connections page
-      router.push('/followingpage'); // Or '/connections' if you renamed the file/route
-    }
-  };
-
-  // When the button is already active, call the scrollToTop function from context.
+  // Arrow press scrolls based on activeTab matching the current view state
   const handleArrowPress = () => {
-    // Check if the currently displayed tab matches the activeTab derived from the route/context
-    // And call scrollToTop only if it's a match
-    if (
-        (activeTab === 'home' && pathname === '/' && contentChoice.toLowerCase() !== 'trending') ||
-        (activeTab === 'trending' && pathname === '/' && contentChoice.toLowerCase() === 'trending') ||
-        (activeTab === 'saved' && pathname === '/savedarticles') ||
-        (activeTab === 'feed' && pathname === '/repostfeed') || // *** Added feed check ***
-        (activeTab === 'friends' && pathname === '/followingpage') // *** Updated friends check ***
-    ) {
-        scrollToTop();
-    } else {
-        // If the tab isn't truly active for scrolling (e.g., home tab pressed while on /savedarticles),
-        // perform the default navigation action instead.
-        switch(activeTab) {
-            case 'home': handleHomePress(); break;
-            case 'trending': handleTrendingPress(); break;
-            case 'saved': handleBookmarkPress(); break;
-            case 'feed': handleFeedPress(); break; // *** Added feed case ***
-            case 'friends': handleFriendsPress(); break; // *** Updated friends case ***
-        }
-    }
+      console.log(`handleArrowPress called, checking if truly active for determined tab: ${activeTab}`);
+      // Check if the ACTIVE BUTTON state matches the current route/view state
+      const isTrulyActive =
+          (activeTab === 'home' && pathname === '/' && homeScreenTab === 'home') ||
+          (activeTab === 'trending' && pathname === '/' && homeScreenTab === 'trending') ||
+          (activeTab === 'saved' && pathname.startsWith('/savedarticles')) || // Use startsWith for robustness
+          (activeTab === 'profile' && pathname.startsWith('/myprofile')); // Use startsWith for robustness
+
+      if (isTrulyActive) {
+          console.log("--> Scrolling to top");
+          scrollToTop();
+      } else {
+           console.log("--> Tab not truly active for scroll, performing navigation fallback");
+           // Updated switch statement
+          switch(activeTab) {
+              case 'home': handleHomePress(); break;
+              case 'trending': handleTrendingPress(); break;
+              case 'saved': handleBookmarkPress(); break;
+              case 'profile': handleProfilePress(); break; // Added profile case
+          }
+      }
   };
 
-
+  // Render ChronicallyButton only if path was allowed
   return (
-    // *** Pass updated/new props to ChronicallyButton ***
     <ChronicallyButton
       onHomePress={handleHomePress}
       onTrendingPress={handleTrendingPress}
       onBookmarkPress={handleBookmarkPress}
-      onFeedPress={handleFeedPress} // Pass new handler
-      onFriendsPress={handleFriendsPress} // Pass renamed handler
+      onProfilePress={handleProfilePress} // Pass new handler
+      // Removed onFeedPress, onFriendsPress
       onArrowPress={handleArrowPress}
-      activeTab={activeTab}
+      activeTab={activeTab} // Pass the correctly determined activeTab
       isDarkTheme={isDarkTheme}
     />
   );
 }
 
+// Styles (Unchanged)
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { flex: 1 },

@@ -97,7 +97,7 @@ const ConnectionsPage: React.FC = () => {
       modalBackground: '#FFFFFF',
     },
     dark: {
-      background: '#0A0A0A', cardBackground: '#1A1A1A', textPrimary: '#F9FAFB',
+      background: '#000000', cardBackground: '#1A1A1A', textPrimary: '#F9FAFB',
       textSecondary: '#9CA3AF', textTertiary: '#6B7280', accent: '#818CF8',
       accentContrast: '#FFFFFF', destructive: '#F87171', success: '#34D399',
       info: '#60A5FA', borderColor: '#374151', placeholder: '#374151',

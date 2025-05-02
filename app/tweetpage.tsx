@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { UserContext } from '../app/UserContext';
+import { useRouter } from 'expo-router';
 import InAppMessage from '../components/ui/InAppMessage'; // Assuming path
 
 // --- Configuration ---
@@ -77,9 +78,10 @@ interface CommentCardProps {
   profilePictureUrl?: string | null;
   isDarkTheme: boolean; // Pass theme explicitly
   colors: any; // Pass color theme object
+  onUserPress: (username: string) => void; // <--- Add this prop
 }
 
-const CommentCard: React.FC<CommentCardProps> = React.memo(({ comment, profilePictureUrl, isDarkTheme, colors }) => {
+const CommentCard: React.FC<CommentCardProps> = React.memo(({ comment, profilePictureUrl, isDarkTheme, colors, onUserPress  }) => {
 
   // Use relative time formatting for comments too
    const formatRelativeTime = (isoDate?: string): string => {
@@ -104,31 +106,40 @@ const CommentCard: React.FC<CommentCardProps> = React.memo(({ comment, profilePi
   };
 
   return (
-    // Use padding and borders for separation instead of background color
-    <View style={[styles.commentCard, { borderBottomColor: colors.borderColor }]}>
-      <View style={styles.commentHeader}>
-        {profilePictureUrl ? (
-          <Image source={{ uri: profilePictureUrl }} style={styles.commentImage} />
-        ) : (
-          <View style={[styles.commentImagePlaceholder, { backgroundColor: colors.placeholder }]}>
-            <Icon name="person" size={18} color={colors.textSecondary} />
+      <View style={[styles.commentCard, { borderBottomColor: colors.borderColor }]}>
+        {/* --- Wrap header in TouchableOpacity --- */}
+        <TouchableOpacity
+          style={styles.commentHeaderTouchable} // Use a style if needed, or just use View directly
+          onPress={() => onUserPress(comment.username)} // Call the handler on press
+          // Optionally disable if it's the current user - check happens in handler
+          // disabled={comment.username === loggedInUsername} // Cannot do this check here easily
+        >
+          <View style={styles.commentHeaderContent}> {/* Added inner View for layout */}
+              {profilePictureUrl ? (
+              <Image source={{ uri: profilePictureUrl }} style={styles.commentImage} />
+              ) : (
+              <View style={[styles.commentImagePlaceholder, { backgroundColor: colors.placeholder }]}>
+                  <Icon name="person" size={18} color={colors.textSecondary} />
+              </View>
+              )}
+              <View style={styles.commentInfo}>
+                  <Text style={[styles.commentUsername, { color: colors.textPrimary }]}>
+                      {comment.username}
+                  </Text>
+                  <Text style={[styles.commentDate, { color: colors.textSecondary }]}>
+                      {formatRelativeTime(comment.created_at)}
+                  </Text>
+              </View>
           </View>
-        )}
-        <View style={styles.commentInfo}>
-          <Text style={[styles.commentUsername, { color: colors.textPrimary }]}>
-            {comment.username}
-          </Text>
-          <Text style={[styles.commentDate, { color: colors.textSecondary }]}>
-            {formatRelativeTime(comment.created_at)}
-          </Text>
-        </View>
+        </TouchableOpacity>
+        {/* --- End Touchable Header --- */}
+
+        <Text style={[styles.commentText, { color: colors.textPrimary }]}>
+          {comment.content}
+        </Text>
       </View>
-      <Text style={[styles.commentText, { color: colors.textPrimary }]}>
-        {comment.content}
-      </Text>
-    </View>
-  );
-});
+    );
+  });
 
 
 // ----------------- TweetModal Props -----------------
@@ -141,6 +152,7 @@ interface TweetModalProps {
 // ----------------- TweetModal Component -----------------
 const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) => {
   const { userToken, isDarkTheme } = useContext(UserContext);
+  const router = useRouter();
 
   // --- State ---
   const [tweetData, setTweetData] = useState<any>(null);
@@ -213,6 +225,27 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
     setMessageType(type);
     setMessageVisible(true);
   }, []);
+
+  // --- Navigation Handler ---
+    const handleNavigateToProfile = useCallback((tappedUsername: string) => {
+        // Check if the tapped user is valid and not the currently logged-in user
+        if (tappedUsername && tappedUsername) {
+            console.log(`[TweetModal] Navigating to profile: ${tappedUsername}`);
+            // Close the current TweetModal first for better UX
+            onClose();
+            // Use a short timeout to allow modal closing animation before navigating
+            setTimeout(() => {
+                router.push(`/profile/${tappedUsername}`);
+            }, 100); // Adjust delay if needed (e.g., 50-150ms)
+        } else if (tappedUsername === username) {
+            console.log("[TweetModal] Tapped on own username in comments, not navigating.");
+            // Optional: show message or navigate to own profile differently?
+            // showInAppMessage("This is you!", "info");
+        } else {
+             console.log("[TweetModal] Invalid username tapped.");
+        }
+    // Add router, username (state), and onClose to dependencies
+    }, [router, username, onClose]);
 
   // --- Interaction Tracking ---
     const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article', interactionType: string) => {
@@ -671,10 +704,17 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
 
   // --- Render Logic ---
   const renderCommentCard = ({ item }: { item: any }) => {
-    const pfpUrl = profilePictures[item.username];
-    // Pass theme info down
-    return <CommentCard comment={item} profilePictureUrl={pfpUrl} isDarkTheme={isDarkTheme} colors={currentTheme} />;
-  };
+      const pfpUrl = profilePictures[item.username];
+      return (
+        <CommentCard
+          comment={item}
+          profilePictureUrl={pfpUrl}
+          isDarkTheme={isDarkTheme}
+          colors={currentTheme}
+          onUserPress={handleNavigateToProfile} // <--- Pass the navigation handler
+        />
+      );
+    };
 
   // --- Main Render ---
   return (
@@ -1244,6 +1284,11 @@ const styles = StyleSheet.create({
     marginTop: 1,
      // color set inline
   },
+  commentHeaderContent: { // Inner view to hold the actual content layout
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginBottom: 6, // Keep existing margin from original commentHeader
+      },
   commentText: {
     fontSize: fontSizes.base,
     lineHeight: fontSizes.base * 1.4,
