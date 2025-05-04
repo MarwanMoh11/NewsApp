@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { UserContext } from '../app/UserContext';
+import PublicProfileModal from '../app/ProfileModal';
 import { useRouter } from 'expo-router';
 import InAppMessage from '../components/ui/InAppMessage'; // Assuming path
 
@@ -165,6 +166,11 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   const [explanation, setExplanation] = useState<string | null>(null);
   const [imageAspectRatio, setImageAspectRatio] = useState<number | null>(null); // State for aspect ratio
 
+   // *** ADD STATE FOR PROFILE MODAL ***
+    const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+    const [selectedProfileUsername, setSelectedProfileUsername] = useState<string | null>(null);
+    // *** END ADD STATE ***
+
 
   // Loading States
   const [isTweetLoading, setIsTweetLoading] = useState(false);
@@ -227,25 +233,31 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   }, []);
 
   // --- Navigation Handler ---
-    const handleNavigateToProfile = useCallback((tappedUsername: string) => {
-        // Check if the tapped user is valid and not the currently logged-in user
-        if (tappedUsername && tappedUsername) {
-            console.log(`[TweetModal] Navigating to profile: ${tappedUsername}`);
-            // Close the current TweetModal first for better UX
-            onClose();
-            // Use a short timeout to allow modal closing animation before navigating
-            setTimeout(() => {
-                router.push(`/profile/${tappedUsername}`);
-            }, 100); // Adjust delay if needed (e.g., 50-150ms)
-        } else if (tappedUsername === username) {
-            console.log("[TweetModal] Tapped on own username in comments, not navigating.");
-            // Optional: show message or navigate to own profile differently?
-            // showInAppMessage("This is you!", "info");
-        } else {
-             console.log("[TweetModal] Invalid username tapped.");
-        }
-    // Add router, username (state), and onClose to dependencies
-    }, [router, username, onClose]);
+    // --- Navigation Handler (MODIFIED) ---
+        const handleNavigateToProfile = useCallback((tappedUsername: string) => {
+            // Optional: Check if it's the current user's own profile
+            if (tappedUsername === username) {
+                 console.log("[TweetModal] Tapped on own username. Opening profile modal.");
+                 // Decide if you want to allow viewing own profile this way
+                 // If not, you could show a message or do nothing:
+                 // showInAppMessage("This is you!", "info");
+                 // return;
+            }
+
+            if (tappedUsername) {
+                console.log(`[TweetModal] Opening profile modal for: ${tappedUsername}`);
+                setSelectedProfileUsername(tappedUsername); // Set the username to view
+                setIsProfileModalVisible(true);           // Set the profile modal to visible
+                // --- REMOVE NAVIGATION LOGIC ---
+                // onClose(); // Don't close the TweetModal
+                // setTimeout(() => {
+                //     router.push(`/profile/${tappedUsername}`);
+                // }, 100);
+            } else {
+                 console.log("[TweetModal] Invalid username tapped.");
+            }
+        // Update dependencies: remove router, onClose. Keep username if using the self-check.
+        }, [username, /* showInAppMessage (if used for self-tap) */]);
 
   // --- Interaction Tracking ---
     const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article', interactionType: string) => {
@@ -729,7 +741,7 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
             {/* Custom Header */}
             <View style={[styles.modalHeader, { borderBottomColor: currentTheme.borderColor }]}>
                 <View style={styles.headerSpacer} />{/* Left Spacer */}
-                <Text style={[styles.modalTitle, { color: currentTheme.textPrimary }]}>Tweet Details</Text>
+                <Text style={[styles.modalTitle, { color: currentTheme.textPrimary }]}>Tweet/BlueSky Details</Text>
                   <TouchableOpacity onPress={onClose} style={styles.closeButton}>
                                     <Icon name="close-outline" size={28} color={currentTheme.accent} />
                   </TouchableOpacity>
@@ -823,7 +835,7 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
                                 >
                                     <Icon name="open-outline" size={16} color={currentTheme.accent} style={{marginRight: 5}}/>
                                     <Text style={[styles.viewFullTweetButtonText, { color: currentTheme.accent }]}>
-                                        View on X / Twitter
+                                        View on X / BlueSky
                                     </Text>
                                 </TouchableOpacity>
                             )}
@@ -973,6 +985,15 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
                 type={messageType}
                 onClose={() => setMessageVisible(false)}
             />
+
+            <PublicProfileModal
+                            visible={isProfileModalVisible}
+                            onClose={() => {
+                                setIsProfileModalVisible(false); // Function to hide the profile modal
+                                setSelectedProfileUsername(null); // Clear the selected username
+                            }}
+                            targetUsername={selectedProfileUsername} // Pass the username from state
+                        />
         </View>
     </Modal>
   );

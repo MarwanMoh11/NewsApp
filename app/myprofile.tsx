@@ -332,7 +332,7 @@ const ProfilePage: React.FC = () => {
       // --- Key generation moved to the map function below ---
 
       const masterCardItem={type:item.content_type,id:contentId,dateTime:item.original_content.Created_At||item.original_content.date||item.reposted_at,author:item.original_content.Username||item.original_content.authors||'Unknown Author',text_content:item.original_content.Tweet||item.original_content.headline||'',media_url:item.original_content.Media_URL||item.original_content.image_url||null,categories:item.original_content.categories||item.original_content.category||null,region:item.original_content.Region||null,Explanation:item.original_content.Explanation||null,Retweets:item.original_content.Retweets||0,Favorites:item.original_content.Favorites||0,};
-      const handlePress=item.content_type==='tweet'?handleTweetPress:handleArticlePress;
+      const handlePress=item.content_type==='article'?handleArticlePress:handleTweetPress;
 
       // The wrapper View with the key is now applied in the .map() call below
       return(

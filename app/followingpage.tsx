@@ -22,6 +22,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { UserContext } from './UserContext'; // Adjust path if needed
 import { ScrollContext } from './ScrollContext'; // Adjust path if needed
+import PublicProfileModal from './ProfileModal';
 import InAppMessage from '../components/ui/InAppMessage'; // Adjust path if needed
 
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
@@ -74,6 +75,10 @@ const ConnectionsPage: React.FC = () => {
   const [showConfirmRemoveDialog, setShowConfirmRemoveDialog] = useState(false);
   const [userToRemove, setUserToRemove] = useState<string | null>(null);
 
+  const [isProfileModalVisible, setIsProfileModalVisible] = useState(false);
+  const [selectedProfileUsername, setSelectedProfileUsername] = useState<string | null>(null);
+
+
   // --- Hooks ---
   const router = useRouter();
   const { userToken, isDarkTheme } = useContext(UserContext);
@@ -122,6 +127,16 @@ const ConnectionsPage: React.FC = () => {
     // Optional: Auto-hide after a delay
     // setTimeout(() => setMessageVisible(false), 3000);
   }, []);
+
+   const handleViewProfile = useCallback((profileUsername: string) => {
+      if (!profileUsername) return;
+      // Optionally, you could prevent opening own profile from here if desired
+      // if (profileUsername === username) return;
+
+      console.log(`[ConnectionsPage] Opening profile modal for: ${profileUsername}`);
+      setSelectedProfileUsername(profileUsername);
+      setIsProfileModalVisible(true);
+    }, [username]); // Dependency on own username if self-check is added
 
   // --- Effects ---
   useEffect(() => {
@@ -571,23 +586,33 @@ const ConnectionsPage: React.FC = () => {
 
 
   // --- Render Helpers ---
-  const renderUserCard = (
-      item: Friend,
-      actions: React.ReactNode,
-      statusText?: string,
-      statusColor?: string
-    ) => (
-    <View style={styles.userCard}>
-      <Image source={{ uri: item.profile_picture || defaultPFP }} style={styles.profileImage} />
-      <View style={styles.userInfo}>
-          <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">{item.username}</Text>
-          {statusText && <Text style={[styles.statusText, { color: statusColor || currentTheme.textSecondary }]}>{statusText}</Text>}
+    const renderUserCard = (
+        item: Friend,
+        actions: React.ReactNode,
+        statusText?: string,
+        statusColor?: string
+      ) => (
+      <View style={styles.userCard}>
+        {/* --- Wrap Image and Info in TouchableOpacity --- */}
+        <TouchableOpacity
+          style={styles.userInfoTouchable} // Added style for this touchable area
+          onPress={() => handleViewProfile(item.username)} // Call handler on press
+          // disabled={item.username === username} // Optionally disable for own profile
+        >
+          <Image source={{ uri: item.profile_picture || defaultPFP }} style={styles.profileImage} />
+          <View style={styles.userInfo}>
+              <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">{item.username}</Text>
+              {statusText && <Text style={[styles.statusText, { color: statusColor || currentTheme.textSecondary }]}>{statusText}</Text>}
+          </View>
+        </TouchableOpacity>
+        {/* --- End Touchable Area --- */}
+
+        {/* Action buttons remain separate */}
+        <View style={styles.userActions}>
+            {actions}
+        </View>
       </View>
-      <View style={styles.userActions}>
-          {actions}
-      </View>
-    </View>
-  );
+    );
 
   const renderReceivedRequestCard = ({ item }: { item: Friend }) => renderUserCard(item,
     <>
@@ -813,6 +838,15 @@ const ConnectionsPage: React.FC = () => {
             </View>
        </Modal>
 
+       <PublicProfileModal
+                 visible={isProfileModalVisible}
+                 onClose={() => {
+                     setIsProfileModalVisible(false); // Hide the profile modal
+                     setSelectedProfileUsername(null); // Clear selected user
+                 }}
+                 targetUsername={selectedProfileUsername} // Pass the username from state
+              />
+
     </SafeAreaView>
   );
 };
@@ -873,23 +907,31 @@ const getStyles = (currentTheme: any) =>
       paddingBottom: 80,
     },
     userCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingVertical: 10,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: currentTheme.borderColor,
-    },
-    profileImage: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: currentTheme.placeholder
-    },
-    userInfo: {
-        flex: 1,
-        marginLeft: 10,
-        justifyContent: 'center',
-    },
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingVertical: 10,
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: currentTheme.borderColor,
+        },
+        // --- ADDED STYLE for the touchable profile area ---
+        userInfoTouchable: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          flex: 1, // Allow it to take up space pushing actions to the right
+          marginRight: 8, // Add some space before action buttons
+        },
+        // --- END ADDED STYLE ---
+        profileImage: {
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: currentTheme.placeholder
+        },
+        userInfo: {
+            // Removed flex: 1 from here, moved to TouchableOpacity
+            marginLeft: 10,
+            justifyContent: 'center',
+        },
     userName: {
       fontSize: fontSizes.base,
       fontWeight: '600',

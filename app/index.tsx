@@ -65,7 +65,7 @@ const TweetModal = React.lazy(() => import('./tweetpage'));
 
 // --- Category Grouping Logic (Complete) ---
 const preferenceToMainCategoryMap: Record<string, string> = {
-  'Breaking News': 'Top Stories', 'Politics': 'Top Stories', 'Top': 'Top Stories', 'World': 'Top Stories',
+  'Breaking News': 'Top Stories', 'Top': 'Top Stories', 'World': 'Top Stories',
   'Business': 'Business', 'Technology': 'Business', 'Finance': 'Business',
   'Health': 'Health & Environment', 'Environment': 'Health & Environment', 'Food': 'Health & Environment', 'Science': 'Health & Environment',
   'Football': 'Sports', 'Formula1': 'Sports', 'Sports': 'Sports', 'Gaming': 'Sports', 'Cricket': 'Sports', 'Tennis': 'Sports',
@@ -93,58 +93,6 @@ const areArraysEqual = (arr1: any[] | null | undefined, arr2: any[] | null | und
 };
 
 
-// --- Custom Auth Hook (Complete) ---
-function useAuth() {
-  const router = useRouter();
-  const [loadingLogin, setLoadingLogin] = useState(false);
-  const [request, response, promptAsync] = useAuthRequest(
-    {
-      clientId,
-      redirectUri,
-      scopes: ['openid', 'profile', 'email'],
-      usePKCE: false,
-      extraParams: {
-        audience: 'chronically-backend-api'
-      }
-    },
-    {
-      authorizationEndpoint: `https://${domain}/authorize`,
-      tokenEndpoint: `https://${domain}/oauth/token`,
-    }
-  );
-  const authUrlWeb = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile%20email&prompt=login`;
-
-  const login = useCallback(async (options?: AuthRequestPromptOptions) => {
-    setLoadingLogin(true);
-    try {
-      if (Platform.OS === 'web') {
-        window.location.href = authUrlWeb;
-      } else {
-        if (request) {
-          const result = await promptAsync(options);
-          if (result.type === 'success' && result.params.code) {
-            router.push({ pathname: '/loginstatus', params: { code: result.params.code } });
-          } else if (result.type === 'error') {
-            console.error('Auth Error:', result.params?.error, result.params?.error_description);
-            throw new Error(result.params?.error_description || 'Authorization failed');
-          } else if (result.type !== 'cancel' && result.type !== 'dismiss') {
-            console.error('Auth Issue:', result);
-            Alert.alert('Login Error', 'An unexpected issue occurred during login.');
-          }
-        } else {
-          Alert.alert('Login Error', 'Authentication request could not be prepared.');
-        }
-      }
-    } catch (error: any) {
-      console.error('Error during login process:', error);
-      Alert.alert('Login Failed', error.message || 'An unexpected error occurred.');
-    } finally {
-      setLoadingLogin(false);
-    }
-  }, [router, request, promptAsync, authUrlWeb]);
-
-  return { login, loadingLogin };
-}
 
 
 // --- Memoized Card Components (Complete) ---
@@ -170,6 +118,8 @@ const Index: React.FC = () => {
   const [contentErrorMessage, setContentErrorMessage] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+   // Add this line back:
+    const [loadingLogin, setLoadingLogin] = useState(false);
   const [hasMoreData, setHasMoreData] = useState(true);
   const [pageLoading, setPageLoading] = useState(true);
 
@@ -207,8 +157,6 @@ const Index: React.FC = () => {
   const flashListRef = useRef<FlashList<any>>(null);
   const fetchControllerRef = useRef<AbortController | null>(null);
 
-  // --- Custom Hooks ---
-  const { login, loadingLogin } = useAuth();
 
   // --- Utility Functions (Complete) ---
   const showLoginMessage = useCallback((text: string = "Please log in to access this feature.", type: 'info' | 'error' | 'success' = 'info') => {
@@ -609,6 +557,67 @@ const Index: React.FC = () => {
     }, [ activeFeed, domaindynamo, userRegion, PAGE_LIMIT, MAX_ITEMS_TO_KEEP, cancelOngoingFetch ]);
 
 
+
+// Add this back inside the Index component
+  const [request, response, promptAsync] = useAuthRequest(
+    {
+      clientId,
+      redirectUri,
+      scopes: ['openid', 'profile', 'email'],
+      usePKCE: false,
+      // NOTE: No extraParams/audience here like in the new hook
+      prompt: 'login', // Add prompt: 'login' like the old version had
+    },
+    {
+      authorizationEndpoint: `https://${domain}/authorize`
+      // NOTE: No explicit tokenEndpoint here like in the new hook
+    }
+  );
+
+  // Add this function back inside the Index component
+    const handleLogin = async () => {
+      setLoadingLogin(true);
+      // setErrorMessage(''); // Uncomment if you added errorMessage state back
+
+      if (Platform.OS === 'web') {
+        // Use the same URL construction method as the old version
+        const authUrlWeb = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile%20email&prompt=login`;
+        window.location.href = authUrlWeb;
+      } else {
+        try {
+          if (request) {
+            const result = await promptAsync(); // Use promptAsync directly
+            if (result.type === 'success' && result.params.code) {
+              // Navigate to loginstatus like the old version
+              router.push({ pathname: '/loginstatus', params: { code: result.params.code } });
+            } else if (result.type === 'error') {
+                // Basic error logging like the old version
+                console.error('Auth Error:', result.params?.error, result.params?.error_description);
+                // setErrorMessage(result.params?.error_description || 'Authorization failed'); // Use if added back
+                Alert.alert('Login Error', result.params?.error_description || 'Authorization failed'); // Or keep Alert
+            } else if (result.type !== 'cancel' && result.type !== 'dismiss') {
+                // Basic logging for other issues
+                console.error('Auth Issue:', result);
+                // setErrorMessage('Login failed'); // Use if added back
+                Alert.alert('Login Error', 'An unexpected issue occurred during login.'); // Or keep Alert
+            }
+          } else {
+             // Handle case where request is not ready
+             console.error("Authentication request is not ready.");
+             // setErrorMessage('Login setup failed.'); // Use if added back
+             Alert.alert('Login Error', 'Authentication request could not be prepared.'); // Or keep Alert
+          }
+        } catch (error: any) {
+          console.error('Error during login process:', error);
+          // setErrorMessage(error.message || 'An unexpected error occurred.'); // Use if added back
+          Alert.alert('Login Failed', error.message || 'An unexpected error occurred.'); // Or keep Alert
+        }
+      }
+      // Make sure loading state is reset regardless of web/native or success/error
+      setLoadingLogin(false);
+    };
+
+
  // Inside Index.tsx
 
    // Search Function (Complete - populates feedData, uses CORRECTED mapping)
@@ -826,7 +835,7 @@ const Index: React.FC = () => {
     if (item && item.id && typeof item.id === 'string') {
         setSelectedTweetLink(item.id);
         setTweetModalVisible(true);
-        trackInteraction(item.id, 'tweet', 'view');
+        trackInteraction(item.id, item.type, 'view');
     } else {
         console.warn("Tweet item/link (item.id) missing or not string", item);
         showLoginMessage("Could not open tweet details.", 'error');
@@ -941,7 +950,7 @@ const Index: React.FC = () => {
       console.warn("Skipping render for item missing type or id:", item);
       return null;
       }
-      const onPressHandler = item.type === 'tweet' ? handleTweetPress : handleArticlePress;
+      const onPressHandler = item.type === 'article'  ? handleArticlePress : handleTweetPress;
       return <MemoizedMasterCard item={item} onPress={onPressHandler} />;
   }, [handleTweetPress, handleArticlePress]);
 
@@ -1011,7 +1020,7 @@ const Index: React.FC = () => {
         username={username}
         profilePictureUrl={profilePictureUrl}
         onSettingsPress={() => { if (!userToken) { showLoginMessage(); return; } router.push('/settings'); }}
-        onLoginPress={login}
+        onLoginPress={handleLogin}
         isLoggedIn={!!userToken}
         onSearch={handleSearchChange}
         searchQuery={searchQuery}
@@ -1058,7 +1067,7 @@ const Index: React.FC = () => {
                 }
               </Text>
               {activeFeed === 'forYou' && !username && (
-                  <TouchableOpacity onPress={login} style={dynamicStyles.retryButton}>
+                  <TouchableOpacity onPress={handleLogin} style={dynamicStyles.retryButton}>
                      <Text style={dynamicStyles.retryButtonText}>Log In</Text>
                   </TouchableOpacity>
               )}

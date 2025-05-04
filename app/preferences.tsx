@@ -94,7 +94,7 @@ export default function PreferencesScreen() {
 
   // --- Data Definitions ---
    const industriesByCategory: Record<string, string[]> = {
-    'Top Stories': ['Breaking News', 'Politics', 'Top', 'World'],
+    'Top Stories': ['Breaking News', 'Top', 'World'],
     Business: ['Business', 'Technology'],
     'Health & Environment': ['Health', 'Environment', 'Food', 'Science'],
     Sports: ['Football', 'Formula1', 'Sports', 'Gaming'],
