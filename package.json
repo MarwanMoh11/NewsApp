@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.33.1",
+    "express-jwt": "^8.4.1",
+    "jwks-rsa": "^3.1.0",
     "@expo/vector-icons": "^14.0.4",
     "@react-native-picker/picker": "^2.9.0",
     "@react-navigation/bottom-tabs": "^7.0.0",
