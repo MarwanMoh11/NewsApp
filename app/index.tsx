@@ -145,7 +145,7 @@ const Index: React.FC = () => {
   const [selectedMainCategory, setSelectedMainCategory] = useState<string>('');
   const [relevantSubcategories, setRelevantSubcategories] = useState<string[]>([]);
   const [activeSubcategoryFilter, setActiveSubcategoryFilter] = useState<string | string[] | null>(null);
-  const [activeContentTypeFilter, setActiveContentTypeFilter] = useState<'All' | 'Tweets' | 'Articles'>('All');
+  const [activeContentTypeFilter, setActiveContentTypeFilter] = useState<'All' | 'Tweets' | 'Articles' | 'BlueSky'>('All');
 
 
   // UI Message State
@@ -733,6 +733,8 @@ const Index: React.FC = () => {
             newlyFilteredData = feedData.filter(item => item.type === 'tweet');
         } else if (activeContentTypeFilter === 'Articles') {
             newlyFilteredData = feedData.filter(item => item.type === 'article');
+        } else if (activeContentTypeFilter === 'BlueSky') {
+            newlyFilteredData = feedData.filter(item => item.type === 'bluesky');
         } else {
              newlyFilteredData = feedData;
         }
@@ -855,19 +857,42 @@ const Index: React.FC = () => {
     }
   }, [userToken, showLoginMessage, trackInteraction]);
 
-  // Feed Change Handler (Complete)
-  const handleFeedChange = useCallback((newFeed: 'forYou' | 'chronological') => {
-    if (newFeed !== activeFeed) {
-        console.log(`Switching feed to: ${newFeed}`);
-        setActiveFeed(newFeed);
-        setSearchQuery('');
-        setIsSearchLoading(false);
-        setActiveSubcategoryFilter(null);
-        setActiveContentTypeFilter('All');
-        setContentErrorMessage('');
-        flashListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, [activeFeed]);
+    // Feed Change Handler (Complete)
+    const handleFeedChange = useCallback((newFeed: 'forYou' | 'chronological' | 'trending') => { // Added 'trending'
+        if (newFeed !== activeFeed) {
+            console.log(`Switching feed to: ${newFeed}`);
+            setActiveFeed(newFeed);
+            setSearchQuery('');
+            setIsSearchLoading(false);
+            // Reset chronological specific filters only if switching AWAY from chronological or TO it
+            if (activeFeed === 'chronological' || newFeed === 'chronological') {
+                // If switching TO chronological, set a default main category if available
+                if (newFeed === 'chronological' && availableMainCategories.length > 0 && !availableMainCategories.includes(selectedMainCategory)) {
+                    const firstValidMainCat = availableMainCategories[0];
+                    setSelectedMainCategory(firstValidMainCat);
+                    setRelevantSubcategories(getPreferencesForMainCategory(firstValidMainCat).filter(sub => userPreferences.includes(sub)));
+                } else if (newFeed === 'chronological' && selectedMainCategory) {
+                    // Ensure relevant subcategories are up to date if main category is already set
+                    setRelevantSubcategories(getPreferencesForMainCategory(selectedMainCategory).filter(sub => userPreferences.includes(sub)));
+                }
+                setActiveSubcategoryFilter(null);
+                setActiveContentTypeFilter('All');
+            }
+            setContentErrorMessage('');
+            flashListRef.current?.scrollToOffset({ offset: 0, animated: false });
+            // If switching to 'trending' or 'forYou' via HeaderTabs, update router to reflect this for consistency
+            // Only do this if the current path is the home path.
+            if (pathname === '/') {
+                if (newFeed === 'trending') {
+                    router.replace({ pathname: '/', params: { feed: 'trending' } });
+                } else if (newFeed === 'forYou') {
+                    router.replace({ pathname: '/', params: { feed: 'forYou' } }); // Or params: {}
+                }
+                // No router change for 'chronological' as it's a sub-state of "Home"
+            }
+
+        }
+    }, [activeFeed, router, pathname, availableMainCategories, selectedMainCategory, userPreferences]); // Added router, pathname and chronological filter states
 
   // *** NEW Main Category Select Handler (replaces modal logic) ***
   const handleMainCategorySelect = useCallback((category: string) => {
@@ -899,7 +924,7 @@ const Index: React.FC = () => {
   }, [activeSubcategoryFilter]);
 
   // Content Type Filter Change Handler (Complete - Updates state for filtering effect)
-  const handleContentTypeFilterChange = useCallback((filter: 'All' | 'Tweets' | 'Articles') => {
+  const handleContentTypeFilterChange = useCallback((filter: 'All' | 'Tweets' | 'Articles' | 'BlueSky') => {
     console.log(`[handleContentTypeFilterChange] Filter selected: ${filter}`);
     if (filter !== activeContentTypeFilter) {
         console.log(`[handleContentTypeFilterChange] Updating filter state from ${activeContentTypeFilter} to ${filter}`);
@@ -996,37 +1021,41 @@ const Index: React.FC = () => {
   }
 
   // --- Main Render ---
-  return (
-    <SafeAreaView style={[dynamicStyles.container, { backgroundColor: themeBackgroundColor }]}>
-      <StatusBar barStyle={themeStatusBar} backgroundColor={themeBackgroundColor} />
+    // Inside the Index component's return statement:
+    return (
+        <SafeAreaView style={[dynamicStyles.container, { backgroundColor: themeBackgroundColor }]}>
+            <StatusBar barStyle={themeStatusBar} backgroundColor={themeBackgroundColor} />
 
-      <HeaderTabs
-        // Feed Management
-        activeFeed={activeFeed}
-        onFeedChange={handleFeedChange}
+            <HeaderTabs
+                activeFeedType={activeFeed}
+                onFeedTypeChange={handleFeedChange} // Pass the handler for For You/Chronological switching
 
-        // Chronological Filters
-        availableMainCategories={activeFeed === 'chronological' ? availableMainCategories : undefined}
-        selectedMainCategory={activeFeed === 'chronological' ? selectedMainCategory : undefined}
-        onMainCategorySelect={activeFeed === 'chronological' ? handleMainCategorySelect : undefined} // Pass the selection handler
-        subcategories={activeFeed === 'chronological' ? relevantSubcategories : undefined}
-        activeSubcategoryFilter={activeFeed === 'chronological' ? activeSubcategoryFilter : undefined}
-        onSubcategoryFilterChange={activeFeed === 'chronological' ? handleSubcategoryFilterChange : undefined}
-        activeContentTypeFilter={activeFeed === 'chronological' ? activeContentTypeFilter : undefined}
-        onContentTypeFilterChange={activeFeed === 'chronological' ? handleContentTypeFilterChange : undefined}
+                // Main Categories (only if chronological)
+                categories={activeFeed === 'chronological' ? availableMainCategories : undefined}
+                activeCategory={activeFeed === 'chronological' ? selectedMainCategory : undefined}
+                onCategorySelect={activeFeed === 'chronological' ? handleMainCategorySelect : undefined}
 
-
-        // User & Search
-        username={username}
-        profilePictureUrl={profilePictureUrl}
-        onSettingsPress={() => { if (!userToken) { showLoginMessage(); return; } router.push('/settings'); }}
-        onLoginPress={handleLogin}
-        isLoggedIn={!!userToken}
-        onSearch={handleSearchChange}
-        searchQuery={searchQuery}
-        isLoading={loadingLogin}
-        isSearchLoading={isSearchLoading}
-      />
+                // ... (rest of the props for subcategories, filters, user, search as before)
+                subcategories={
+                    activeFeed === 'chronological' && selectedMainCategory
+                        ? getPreferencesForMainCategory(selectedMainCategory)
+                        : undefined
+                }
+                allUserPreferences={userPreferences}
+                activeSubcategory={activeFeed === 'chronological' ? activeSubcategoryFilter : undefined}
+                onSubcategorySelect={activeFeed === 'chronological' ? handleSubcategoryFilterChange : undefined}
+                activeFilter={activeFeed === 'chronological' ? activeContentTypeFilter : undefined}
+                onContentTypeFilterChange={activeFeed === 'chronological' ? handleContentTypeFilterChange : undefined}
+                username={username}
+                profilePictureUrl={profilePictureUrl}
+                onSettingsPress={() => { if (!userToken) { showLoginMessage(); return; } router.push('/settings'); }}
+                onLoginPress={handleLogin}
+                isLoggedIn={!!userToken}
+                onSearch={handleSearchChange}
+                searchQuery={searchQuery}
+                isLoading={loadingLogin}
+                isSearchLoading={isSearchLoading}
+            />
 
       {/* FlashList uses displayFeedData */}
       <FlashList
