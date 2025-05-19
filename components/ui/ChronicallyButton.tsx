@@ -1,6 +1,6 @@
 // components/ui/ChronicallyButton.tsx
 // This is the full, unabbreviated code for the ChronicallyButton component,
-// including the new 'Feed' tab and renaming 'Following' to 'Friends'.
+// including the 'Explore' tab and 'Profile' tab.
 
 import React from 'react';
 import {
@@ -18,18 +18,18 @@ interface ChronicallyButtonProps {
   onHomePress: () => void;
   onTrendingPress: () => void;
   onBookmarkPress: () => void;
-  onFeedPress: () => void; // *** Added prop for the new Feed button ***
-  onFriendsPress: () => void; // *** Renamed from onFollowingPress ***
+  onExplorePress: () => void; // Changed from onFeedPress to onExplorePress
+  onProfilePress: () => void; // Changed from onFriendsPress to onProfilePress
   onArrowPress: () => void; // Action for pressing the *active* tab (e.g., scroll to top)
-  // *** Updated activeTab type to include 'feed' ***
-  activeTab: 'home' | 'trending' | 'saved' | 'feed' | 'friends';
+  // Updated activeTab type to include 'explore' and 'profile'
+  activeTab: 'home' | 'trending' | 'saved' | 'explore' | 'profile';
   isDarkTheme: boolean;
 }
 
 // Define Tab configuration for easier management
 type TabConfig = {
-  // *** Updated key type to include 'feed' ***
-  key: 'home' | 'trending' | 'saved' | 'feed' | 'friends';
+  // Updated key type to include 'explore' and 'profile'
+  key: 'home' | 'trending' | 'saved' | 'explore' | 'profile';
   label: string;
   icon: string; // Icon name (outline)
   iconActive: string; // Icon name (filled)
@@ -42,8 +42,8 @@ const ChronicallyButton: React.FC<ChronicallyButtonProps> = ({
   onHomePress,
   onTrendingPress,
   onBookmarkPress,
-  onFeedPress, // *** Destructure new prop ***
-  onFriendsPress, // *** Destructure renamed prop ***
+  onExplorePress, // Changed from onFeedPress to onExplorePress
+  onProfilePress, // Changed from onFriendsPress to onProfilePress
   onArrowPress, // Action for active tab press
   activeTab,
   isDarkTheme,
@@ -62,7 +62,7 @@ const ChronicallyButton: React.FC<ChronicallyButtonProps> = ({
   const iconSize = 22;
 
   // Define the tabs using the TabConfig type
-  // *** Added 'Feed' tab and updated 'Following' to 'Friends' ***
+  // Updated with 'Explore' tab and 'Profile' tab
   const tabs: TabConfig[] = [
     {
       key: 'home',
@@ -91,25 +91,25 @@ const ChronicallyButton: React.FC<ChronicallyButtonProps> = ({
       onActivePress: onArrowPress,
       accessibilityLabel: 'Saved Items Tab',
     },
-    // *** New Feed Tab ***
+    // Explore Tab (replacing Feed)
     {
-      key: 'feed',
-      label: 'Feed',
-      icon: 'newspaper-outline', // Using newspaper icon
-      iconActive: 'newspaper',
-      onPress: onFeedPress, // Use new prop
+      key: 'explore',
+      label: 'Explore',
+      icon: 'compass-outline', // Using compass icon for explore
+      iconActive: 'compass',
+      onPress: onExplorePress,
       onActivePress: onArrowPress,
-      accessibilityLabel: 'Feed Tab',
+      accessibilityLabel: 'Explore Tab',
     },
-    // *** Renamed Following Tab ***
+    // Profile Tab (replacing Friends)
     {
-      key: 'friends', // Key remains 'friends'
-      label: 'Friends', // Renamed label
-      icon: 'people-outline',
-      iconActive: 'people',
-      onPress: onFriendsPress, // Use renamed prop
+      key: 'profile',
+      label: 'Profile',
+      icon: 'person-outline',
+      iconActive: 'person',
+      onPress: onProfilePress,
       onActivePress: onArrowPress,
-      accessibilityLabel: 'Friends Tab', // Updated accessibility label
+      accessibilityLabel: 'Profile Tab',
     },
   ];
 

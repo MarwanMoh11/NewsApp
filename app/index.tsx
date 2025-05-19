@@ -1096,12 +1096,12 @@ const Index: React.FC = () => {
              else { handleScrollToTop(); }
         }}
         onBookmarkPress={!userToken ? showLoginMessage : () => router.push('/savedarticles')}
-        onFeedPress={!userToken ? showLoginMessage : () => router.push('/repostfeed')}
-        onFriendsPress={!userToken ? showLoginMessage : () => router.push('/followingpage')}
+        onExplorePress={() => router.push('/explore')}
+        onProfilePress={!userToken ? showLoginMessage : () => router.push('/myprofile')}
         onArrowPress={handleScrollToTop}
         activeTab={
-            pathname === '/repostfeed' ? 'feed'
-            : pathname === '/followingpage' ? 'friends'
+            pathname === '/explore' ? 'explore'
+            : pathname === '/myprofile' ? 'profile'
             : pathname === '/savedarticles' ? 'saved'
             : activeFeed === 'trending' ? 'trending'
             : activeFeed === 'forYou' || activeFeed === 'chronological' ? 'home'

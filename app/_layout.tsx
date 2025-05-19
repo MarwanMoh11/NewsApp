@@ -86,7 +86,7 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
 
   // --- VISIBILITY CHECK (Performed AFTER Hooks) ---
   // Define paths where the bottom bar should be visible
-  const allowedPaths = ['/', '/savedarticles', '/myprofile']; // Updated list
+  const allowedPaths = ['/', '/savedarticles', '/myprofile', '/explore']; // Updated list with explore
   console.log(`[PersistentBottomBar] Checking visibility for pathname: "${pathname}"`);
 
   // Check if the exact path is allowed OR if it starts with an allowed path (e.g., /myprofile/edit)
@@ -103,12 +103,14 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
 
   // --- Determine activeTab prop for ChronicallyButton ---
   // Updated type definition
-  let activeTab: 'home' | 'trending' | 'saved' | 'profile';
+  let activeTab: 'home' | 'trending' | 'saved' | 'explore' | 'profile';
 
   if (pathname.startsWith('/savedarticles')) {
     activeTab = 'saved';
   } else if (pathname.startsWith('/myprofile')) { // Check for profile path
     activeTab = 'profile';
+  } else if (pathname.startsWith('/explore')) { // Check for explore path
+    activeTab = 'explore';
   } else if (pathname === '/') {
     activeTab = homeScreenTab; // Use internal state for '/' route highlighting
   } else {
@@ -134,9 +136,12 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
     if (!userToken) { showLoginMessage(); } else { router.push('/savedarticles'); }
   };
 
-  // Removed handleFeedPress, handleFriendsPress
+  // New handler for Explore
+  const handleExplorePress = () => {
+    router.push('/explore'); // Navigate to explore page
+  };
 
-  // New handler for Profile
+  // Handler for Profile
   const handleProfilePress = () => {
     if (!userToken) {
       showLoginMessage();
@@ -153,6 +158,7 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
           (activeTab === 'home' && pathname === '/' && homeScreenTab === 'home') ||
           (activeTab === 'trending' && pathname === '/' && homeScreenTab === 'trending') ||
           (activeTab === 'saved' && pathname.startsWith('/savedarticles')) || // Use startsWith for robustness
+          (activeTab === 'explore' && pathname.startsWith('/explore')) || // Added explore case
           (activeTab === 'profile' && pathname.startsWith('/myprofile')); // Use startsWith for robustness
 
       if (isTrulyActive) {
@@ -165,6 +171,7 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
               case 'home': handleHomePress(); break;
               case 'trending': handleTrendingPress(); break;
               case 'saved': handleBookmarkPress(); break;
+              case 'explore': handleExplorePress(); break; // Added explore case
               case 'profile': handleProfilePress(); break; // Added profile case
           }
       }
@@ -176,8 +183,8 @@ function PersistentBottomBar({ showLoginMessage }: PersistentBottomBarProps) {
       onHomePress={handleHomePress}
       onTrendingPress={handleTrendingPress}
       onBookmarkPress={handleBookmarkPress}
-      onProfilePress={handleProfilePress} // Pass new handler
-      // Removed onFeedPress, onFriendsPress
+      onExplorePress={handleExplorePress} // Pass explore handler
+      onProfilePress={handleProfilePress} // Pass profile handler
       onArrowPress={handleArrowPress}
       activeTab={activeTab} // Pass the correctly determined activeTab
       isDarkTheme={isDarkTheme}
