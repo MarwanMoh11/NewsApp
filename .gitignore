@@ -7,3 +7,42 @@ expo-env.d.ts
 
 # Local Netlify folder
 .netlify
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary fix files
+fix_*.md
+fix_*.txt
+*fix*.js
+implementation.js
+
+# Build artifacts
+/dist/
+/.expo/
+/web-build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
