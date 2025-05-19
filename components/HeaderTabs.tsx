@@ -20,41 +20,47 @@ import { UserContext } from '../app/UserContext'; // Adjust path if needed
 // --- Define the props interface ---
 export interface HeaderTabsProps {
   activeFeedType: 'forYou' | 'chronological' | 'trending';
-  onFeedTypeChange: (feedType: 'forYou' | 'chronological') => void; // To tell Index.tsx to change feed
+  onFeedTypeChange: (feedType: 'forYou' | 'chronological') => void;
 
-  // Main Categories (for chronological)
   categories?: string[];
   activeCategory?: string;
   onCategorySelect?: (category: string) => void;
 
-  // Subcategories (for chronological)
   subcategories?: string[];
   allUserPreferences?: string[];
   activeSubcategory?: string | string[] | null;
   onSubcategorySelect?: (subcategory: string | string[] | null) => void;
 
-  // Content Type Filter (for chronological)
   activeFilter?: string;
   onContentTypeFilterChange?: (filter: string) => void;
 
-  // User & Search (always applicable)
   username?: string | null;
   profilePictureUrl?: string | null;
   onSettingsPress: () => void;
   onLoginPress: () => void;
-  onSearch: (query: string) => void; // This is called when search input changes
+  onSearch: (query: string) => void;
   isLoggedIn: boolean;
-  searchQuery: string; // Current search query from parent (Index.tsx)
-  isLoading?: boolean; // Login button loading state
-  isSearchLoading?: boolean; // Search input loading indicator state from parent (Index.tsx)
+  searchQuery: string;
+  isLoading?: boolean;
+  isSearchLoading?: boolean;
+  scrollY?: Animated.Value; // New prop for scroll-based animations
 }
 
-// --- Constants ---
-const MAIN_HEADER_MIN_HEIGHT = 60; // Increased for more breathing room
-const FEED_TYPE_SWITCHER_HEIGHT = 40; // Slightly taller for better touch targets
-const CATEGORY_TABS_HEIGHT = 36; // Slightly taller for better touch targets
-const FILTER_BAR_HEIGHT = 44; // Slightly taller for better touch targets
+// --- Minimalist Constants ---
+const MAIN_HEADER_ROW_HEIGHT = 52;        // Height of the main top row
+const FEED_TYPE_SWITCHER_H = 36;          // Height of the feed type switcher itself (increased from 32)
+const CATEGORY_TABS_ROW_H = 42; // Was 38, increased by 4
+const CATEGORY_TAB_H = 32;      // Was 28, increased by 4
+const FILTER_BAR_ROW_H = 44;    // Was 40, increased by 4
+const FILTER_BUTTON_H = 34;     // Was 30, increased by 4
+const ICON_SIZE = 19;                     // Standard icon size
+const PROFILE_PIC_SIZE = 28;              // Profile picture diameter
+const SEARCH_INPUT_H = 34;                // Height of the search input field
 
+// Scroll animation thresholds
+const SCROLL_ANIM_START = 0;              // Scroll position where animation starts
+const SCROLL_ANIM_END = 60;               // Scroll position where elements are fully hidden/collapsed
+const SCROLL_OPACITY_ANIM_END = SCROLL_ANIM_END / 2; // Scroll position for full opacity change
 
 // --- Component Definition ---
 const HeaderTabs: React.FC<HeaderTabsProps> = ({
@@ -73,19 +79,22 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                                                  profilePictureUrl,
                                                  onSettingsPress,
                                                  onLoginPress,
-                                                 onSearch, // Used here
-                                                 searchQuery, // Used here
+                                                 onSearch,
+                                                 searchQuery,
                                                  isLoggedIn,
                                                  isLoading = false,
-                                                 isSearchLoading = false, // Used here
+                                                 isSearchLoading = false,
+                                                 scrollY, // Destructure the new prop
                                                }) => {
   const { isDarkTheme } = useContext(UserContext);
   const [isSearchMode, setIsSearchMode] = useState(false);
-  const [showFilterBar, setShowFilterBar] = useState(false);
+  const [showFilterBar, setShowFilterBar] = useState(false); // For toggling filter bar visibility
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   const searchInputRef = useRef<TextInput>(null);
 
-  // Sync local state with prop
+  // Use provided scrollY or a default static one if not provided (scroll animations won't run without parent passing it)
+  const internalScrollY = useRef(scrollY || new Animated.Value(0)).current;
+
   useEffect(() => {
     setLocalSearchQuery(searchQuery);
   }, [searchQuery]);
@@ -94,139 +103,140 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
   const isForYouFeedMode = activeFeedType === 'forYou';
   const isTrendingFeedMode = activeFeedType === 'trending';
 
-  const searchContainerWidth = useRef(new Animated.Value(0)).current;
-  const opacityAnim = useRef(new Animated.Value(1)).current;
-  const filterBarAnim = useRef(new Animated.Value(0)).current;
+  // Animation values
+  const searchContainerWidth = useRef(new Animated.Value(0)).current; // For search bar expansion
+  const mainHeaderContentOpacity = useRef(new Animated.Value(1)).current; // For hiding main content during search
+  const filterBarToggleAnim = useRef(new Animated.Value(0)).current; // For filter bar open/close animation (height)
 
-  // Apple Store grade color palette
+  // Minimalist Color Palette
   const colors = {
-    // Base colors
-    background: isDarkTheme ? '#000000' : '#FFFFFF',
-    text: isDarkTheme ? '#F5F5F7' : '#1D1D1F',
-    textSecondary: isDarkTheme ? '#86868B' : '#6E6E73',
-    placeholder: isDarkTheme ? '#636366' : '#86868B',
-
-    // Icon colors
-    icon: isDarkTheme ? '#86868B' : '#86868B',
+    background: isDarkTheme ? '#0A0A0A' : '#F9F9F9',
+    text: isDarkTheme ? '#E0E0E0' : '#2C2C2E',
+    textSecondary: isDarkTheme ? '#7D7D80' : '#8A8A8E',
+    placeholder: isDarkTheme ? '#5A5A5E' : '#A0A0A5',
+    icon: isDarkTheme ? '#8A8A8E' : '#8A8A8E',
     iconActive: isDarkTheme ? '#FFFFFF' : '#000000',
-
-    // Profile elements
-    profileBorder: isDarkTheme ? '#2D2D2D' : '#E8E8ED',
-
-    // Feed switcher elements
-    feedSwitcherBg: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-    feedSwitcherBorder: 'transparent', // No visible border for cleaner look
-    feedSwitcherButtonBg: 'transparent',
-    feedSwitcherButtonActiveBg: isDarkTheme ? '#2D2D2D' : '#E8E8ED',
-    feedSwitcherButtonText: isDarkTheme ? '#86868B' : '#86868B',
+    profileBorder: isDarkTheme ? '#2C2C2E' : '#E5E5EA',
+    feedSwitcherBg: isDarkTheme ? '#1C1C1E' : '#EFEFF4',
+    feedSwitcherButtonActiveBg: isDarkTheme ? '#2C2C2E' : '#FFFFFF',
+    feedSwitcherButtonText: isDarkTheme ? '#A0A0A5' : '#8A8A8E',
     feedSwitcherButtonActiveText: isDarkTheme ? '#FFFFFF' : '#000000',
-
-    // Category elements
-    categoryBg: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-    categoryBorder: 'transparent', // No visible border for cleaner look
-    categoryText: isDarkTheme ? '#86868B' : '#86868B',
-    categoryActiveBg: isDarkTheme ? '#2D2D2D' : '#E8E8ED',
-    categoryActiveBorder: 'transparent', // No visible border for cleaner look
-    categoryActiveText: isDarkTheme ? '#FFFFFF' : '#000000',
-
-    // Search elements
-    searchBg: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-
-    // Filter bar elements
-    filterBarBackground: isDarkTheme ? '#0D0D0D' : '#FAFAFA',
-    filterBarBorder: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-    filterBarButtonBg: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-    filterBarButtonBorder: 'transparent', // No visible border for cleaner look
-    filterBarButtonText: isDarkTheme ? '#86868B' : '#86868B',
-    filterBarButtonActiveBg: isDarkTheme ? '#2D2D2D' : '#E8E8ED',
-    filterBarButtonActiveBorder: 'transparent', // No visible border for cleaner look
+    categoryBg: 'transparent',
+    categoryText: isDarkTheme ? '#A0A0A5' : '#8A8A8E',
+    categoryActiveBg: 'transparent',
+    categoryActiveText: isDarkTheme ? '#E0E0E0' : '#2C2C2E',
+    searchBg: isDarkTheme ? '#1C1C1E' : '#EFEFF4',
+    filterBarBackground: isDarkTheme ? '#101010' : '#F2F2F7',
+    filterBarBorder: isDarkTheme ? '#252528' : '#E5E5EA',
+    filterBarButtonBg: isDarkTheme ? '#232325' : '#E9E9EF',
+    filterBarButtonActiveBg: isDarkTheme ? '#333336' : '#FFFFFF',
+    filterBarButtonText: isDarkTheme ? '#A0A0A5' : '#8A8A8E',
     filterBarButtonActiveText: isDarkTheme ? '#FFFFFF' : '#000000',
-    filterBarSeparator: isDarkTheme ? '#2D2D2D' : '#E8E8ED',
-
-    // Other elements
-    borderColor: isDarkTheme ? '#1C1C1E' : '#F5F5F7',
-    accent: isDarkTheme ? '#0071E3' : '#0071E3', // Apple's blue accent color
+    filterBarSeparator: isDarkTheme ? '#3A3A3C' : '#D1D1D6',
+    borderColor: isDarkTheme ? '#2A2A2C' : '#E5E5EA', // For header bottom border
+    accent: isDarkTheme ? '#0A84FF' : '#007AFF', // Apple's system blue
   };
-  const iconSize = 22;
-  const profileSize = 30;
 
-  // Generate styles with the current theme, profileSize, and colors
-  const styles = getStyles(isDarkTheme, profileSize, colors);
+  // Generate styles with the current theme, sizes, and colors
+  const styles = getMinimalStyles(isDarkTheme, PROFILE_PIC_SIZE, colors);
 
   const relevantSubcategories = subcategories.filter(sub => allUserPreferences.includes(sub));
   const showSubcategoriesInFilterBar = isChronologicalFeedMode && relevantSubcategories.length > 0;
 
-  const animateSearch = (show: boolean) => {
+  // --- Animations ---
+  const animateSearch = useCallback((show: boolean) => {
     Animated.parallel([
-      Animated.timing(searchContainerWidth, { toValue: show ? 1 : 0, duration: 300, useNativeDriver: false }),
-      Animated.timing(opacityAnim, { toValue: show ? 0 : 1, duration: 200, useNativeDriver: true }),
-    ]).start(() => { if (show) { searchInputRef.current?.focus(); } else { Keyboard.dismiss(); } });
-  };
-  const animateFilterBar = (show: boolean) => {
-    Animated.timing(filterBarAnim, { toValue: show ? 1 : 0, duration: 250, useNativeDriver: false }).start();
-  };
-  useEffect(() => { animateFilterBar(showFilterBar); }, [showFilterBar]);
-  useEffect(() => { animateSearch(isSearchMode); }, [isSearchMode]);
+      Animated.timing(searchContainerWidth, { toValue: show ? 1 : 0, duration: 250, useNativeDriver: false }),
+      Animated.timing(mainHeaderContentOpacity, { toValue: show ? 0 : 1, duration: 200, useNativeDriver: true }),
+    ]).start(() => { if (show) searchInputRef.current?.focus(); else Keyboard.dismiss(); });
+  }, [searchContainerWidth, mainHeaderContentOpacity]);
 
-  // Don't allow search in "For You" mode
+  const animateFilterBarToggle = useCallback((show: boolean) => {
+    Animated.timing(filterBarToggleAnim, { toValue: show ? 1 : 0, duration: 250, useNativeDriver: false }).start();
+  }, [filterBarToggleAnim]);
+
+  useEffect(() => { animateFilterBarToggle(showFilterBar); }, [showFilterBar, animateFilterBarToggle]);
+  useEffect(() => { animateSearch(isSearchMode); }, [isSearchMode, animateSearch]);
+
+  // --- Handlers ---
   const handleToggleSearch = useCallback(() => {
-    if (isForYouFeedMode) {
-      return; // Disable search in "For You" mode
-    }
+    if (isForYouFeedMode) return; // Search disabled in "For You" mode
     setIsSearchMode(prev => !prev);
   }, [isForYouFeedMode]);
+
   const handleSearchChange = useCallback((text: string) => {
-    setLocalSearchQuery(text);
-    onSearch(text);
-  }, [onSearch, setLocalSearchQuery]);
-  const handleClearSearch = useCallback(() => { 
-    setLocalSearchQuery('');
-    onSearch(''); 
-    searchInputRef.current?.clear(); 
-    searchInputRef.current?.focus(); 
-  }, [onSearch, setLocalSearchQuery]);
-  const handleToggleFilterBar = useCallback(() => { setShowFilterBar(prev => !prev); if (showFilterBar) Keyboard.dismiss(); }, [showFilterBar]);
+    setLocalSearchQuery(text); onSearch(text);
+  }, [onSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setLocalSearchQuery(''); onSearch('');
+    searchInputRef.current?.clear(); searchInputRef.current?.focus();
+  }, [onSearch]);
+
+  const handleToggleFilterBar = useCallback(() => {
+    setShowFilterBar(prev => !prev);
+    if (showFilterBar) Keyboard.dismiss(); // Dismiss keyboard if filter bar was open and is now closing
+  }, [showFilterBar]);
 
   const handleSelectFilter = useCallback((filter: string) => {
-    if (onContentTypeFilterChange) { onContentTypeFilterChange(filter); }
-    else { console.warn('onContentTypeFilterChange is not defined'); }
+    onContentTypeFilterChange?.(filter);
   }, [onContentTypeFilterChange]);
 
   const handleSelectSubcategory = useCallback((subcategory: string | string[] | null) => {
-    if (onSubcategorySelect) { onSubcategorySelect(subcategory); }
-    else { console.warn('onSubcategorySelect is not defined'); }
+    onSubcategorySelect?.(subcategory);
   }, [onSubcategorySelect]);
 
   const handleCategoryTabPress = useCallback((category: string) => {
-    if (onCategorySelect) { onCategorySelect(category); }
-    else { console.warn('onCategorySelect is not defined'); }
+    onCategorySelect?.(category);
   }, [onCategorySelect]);
 
+  // --- Animated Styles for Scroll-Away Effect ---
+  const categoryRowAnimatedStyle = {
+    height: internalScrollY.interpolate({
+      inputRange: [SCROLL_ANIM_START, SCROLL_ANIM_END],
+      outputRange: [CATEGORY_TABS_ROW_H, 0], // Collapse from full height to 0
+      extrapolate: 'clamp',
+    }),
+    opacity: internalScrollY.interpolate({
+      inputRange: [SCROLL_ANIM_START, SCROLL_OPACITY_ANIM_END],
+      outputRange: [1, 0], // Fade out
+      extrapolate: 'clamp',
+    }),
+    overflow: 'hidden', // Crucial for height animation to work visually
+  };
+
+  const filterBarFullRowAnimatedStyle = {
+    height: internalScrollY.interpolate({
+      inputRange: [SCROLL_ANIM_START, SCROLL_ANIM_END],
+      outputRange: [FILTER_BAR_ROW_H, 0], // Collapse from full height to 0
+      extrapolate: 'clamp',
+    }),
+    opacity: internalScrollY.interpolate({
+      inputRange: [SCROLL_ANIM_START, SCROLL_OPACITY_ANIM_END],
+      outputRange: [1, 0], // Fade out
+      extrapolate: 'clamp',
+    }),
+    overflow: 'hidden', // Crucial for height animation
+  };
+
+  // --- Render Functions for Sub-Components ---
   const renderProfileIcon = () => (
-      <TouchableOpacity 
-        onPress={isLoggedIn ? onSettingsPress : onLoginPress} 
-        style={styles.profileButton} 
-        disabled={isLoading} 
-        accessibilityLabel={isLoggedIn ? 'Open Settings' : 'Login'}
+      <TouchableOpacity
+          onPress={isLoggedIn ? onSettingsPress : onLoginPress}
+          style={styles.profileButton}
+          disabled={isLoading}
+          accessibilityLabel={isLoggedIn ? 'Open Settings' : 'Login'}
       >
-        {isLoading ? ( 
-          <ActivityIndicator size="small" color={colors.accent} />
+        {isLoading ? (
+            <ActivityIndicator size="small" color={colors.accent} />
         ) : isLoggedIn && profilePictureUrl ? (
-          <View style={styles.profileImageContainer}>
-            <Image 
-              source={{ uri: profilePictureUrl }} 
-              style={styles.profileImage} 
-              accessibilityLabel="User profile picture" 
-            />
-          </View>
+            <View style={styles.profileImageContainer}>
+              <Image source={{ uri: profilePictureUrl }} style={styles.profileImage} accessibilityLabel="User profile picture" />
+            </View>
         ) : (
-          <View style={styles.profilePlaceholder}>
-            <Icon 
-              name={isLoggedIn ? "person" : "log-in-outline"} 
-              size={iconSize * 0.8} 
-              color={isDarkTheme ? colors.text : colors.accent} 
-            />
-          </View>
+            <View style={styles.profilePlaceholder}>
+              <Icon name={isLoggedIn ? "person-circle-outline" : "log-in-outline"} size={ICON_SIZE * 1.1} color={isDarkTheme ? colors.text : colors.accent} />
+            </View>
         )}
       </TouchableOpacity>
   );
@@ -235,74 +245,61 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
     if (isTrendingFeedMode) {
       return (
           <View style={styles.feedTypeSwitcherContainerNoSwitch}>
-            <Text style={[styles.trendingTitle, { color: colors.text }]}>Trending Now</Text>
+            <Text style={[styles.trendingTitle, { color: colors.text }]}>Trending</Text>
           </View>
       );
     }
-
-    // Apple-style segmented control
     return (
-        <View style={[styles.feedTypeSwitcherContainer, { backgroundColor: colors.feedSwitcherBg }]}>
+        <View style={styles.feedTypeSwitcherContainer}>
           <View style={styles.feedTypeSwitcherInner}>
-            <TouchableOpacity
-                style={[
-                  styles.feedTypeButton,
-                  isForYouFeedMode && styles.feedTypeButtonActive,
-                  { backgroundColor: isForYouFeedMode ? colors.feedSwitcherButtonActiveBg : 'transparent' }
-                ]}
-                onPress={() => onFeedTypeChange('forYou')}
-                accessibilityLabel="Switch to For You feed"
-                accessibilityState={{ selected: isForYouFeedMode }}
-            >
-              <Text style={[
-                styles.feedTypeButtonText,
-                { color: isForYouFeedMode ? colors.feedSwitcherButtonActiveText : colors.feedSwitcherButtonText },
-                isForYouFeedMode && styles.feedTypeButtonTextActive
-              ]}>For You</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={[
-                  styles.feedTypeButton,
-                  isChronologicalFeedMode && styles.feedTypeButtonActive,
-                  { backgroundColor: isChronologicalFeedMode ? colors.feedSwitcherButtonActiveBg : 'transparent' }
-                ]}
-                onPress={() => onFeedTypeChange('chronological')}
-                accessibilityLabel="Switch to Latest feed"
-                accessibilityState={{ selected: isChronologicalFeedMode }}
-            >
-              <Text style={[
-                styles.feedTypeButtonText,
-                { color: isChronologicalFeedMode ? colors.feedSwitcherButtonActiveText : colors.feedSwitcherButtonText },
-                isChronologicalFeedMode && styles.feedTypeButtonTextActive
-              ]}>Latest</Text>
-            </TouchableOpacity>
+            {(['forYou', 'chronological'] as const).map(feed => {
+              const isActive = activeFeedType === feed;
+              return (
+                  <TouchableOpacity
+                      key={feed}
+                      style={[
+                        styles.feedTypeButton,
+                        isActive && styles.feedTypeButtonActive,
+                        { backgroundColor: isActive ? colors.feedSwitcherButtonActiveBg : 'transparent' }
+                      ]}
+                      onPress={() => onFeedTypeChange(feed)}
+                      accessibilityLabel={`Switch to ${feed === 'forYou' ? 'For You' : 'Latest'} feed`}
+                      accessibilityState={{ selected: isActive }}
+                  >
+                    <Text style={[
+                      styles.feedTypeButtonText,
+                      { color: isActive ? colors.feedSwitcherButtonActiveText : colors.feedSwitcherButtonText },
+                      isActive && styles.feedTypeButtonTextActive
+                    ]}>{feed === 'forYou' ? 'For You' : 'Latest'}</Text>
+                  </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
     );
   };
 
   const renderCategoryTabs = () => {
-    if (!isChronologicalFeedMode) return null;
-
+    // This component is rendered inside an Animated.View that controls its height (categoryRowAnimatedStyle)
+    // So, its internal height should fill the animated parent.
     if (!categories || categories.length === 0) {
       return (
-          <View style={styles.categoryTabsPlaceholder}>
+          <View style={[styles.categoryTabsPlaceholder, {height: '100%'}]}>
             <Text style={[styles.categoryPlaceholderText, { color: colors.textSecondary }]}>
-              {activeCategory || 'No categories available'}
+              {activeCategory || 'No categories'}
             </Text>
           </View>
       );
     }
 
     return (
-        <View style={styles.categoryTabsContainer}>
+        <View style={[styles.categoryTabsContainer, { backgroundColor: colors.background }]}>
           <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.categoriesScrollContainer}
-              style={styles.categoriesScrollView}
+              style={styles.categoriesScrollView} // Takes full height of its container
               decelerationRate="fast"
-              snapToAlignment="center"
           >
             {categories.map((category) => {
               const isActive = activeCategory === category;
@@ -312,9 +309,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                       onPress={() => handleCategoryTabPress(category)}
                       style={[
                         styles.categoryButton,
-                        {
-                          backgroundColor: isActive ? colors.categoryActiveBg : colors.categoryBg,
-                        }
+                        { backgroundColor: isActive ? colors.categoryActiveBg : colors.categoryBg }
                       ]}
                       accessibilityLabel={`Select category ${category}`}
                       accessibilityState={{ selected: isActive }}
@@ -329,7 +324,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                     >
                       {category}
                     </Text>
-                    {isActive && <View style={styles.categoryActiveIndicator} />}
+                    {isActive && <View style={[styles.categoryActiveIndicator, {backgroundColor: colors.accent}]} />}
                   </TouchableOpacity>
               );
             })}
@@ -339,27 +334,27 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
   };
 
   const renderFilterBar = () => {
+    // This component is rendered inside an Animated.View that controls the entire row's height (filterBarFullRowAnimatedStyle)
+    // The content itself is animated by filterBarToggleAnim for its own open/close effect.
     const filterOptions = ['All', 'Tweets', 'Articles', 'BlueSky'];
-    const animatedFilterBarStyle = {
-      height: filterBarAnim.interpolate({ inputRange: [0, 1], outputRange: [0, FILTER_BAR_HEIGHT] }),
-      opacity: filterBarAnim,
-      borderTopWidth: showFilterBar ? StyleSheet.hairlineWidth : 0,
-      borderBottomWidth: showFilterBar ? StyleSheet.hairlineWidth : 0,
+    const animatedFilterBarContentStyle = {
+      height: filterBarToggleAnim.interpolate({ inputRange: [0, 1], outputRange: [0, FILTER_BAR_ROW_H] }), // Animates from 0 to full filter bar height
+      opacity: filterBarToggleAnim, // Fade in/out with height
     };
 
     const hasValidSubcategoriesForDisplay = Array.isArray(relevantSubcategories) && relevantSubcategories.length > 0;
-    const isAllSubcategoriesActive = (Array.isArray(activeSubcategory) && activeSubcategory.length > 0) ||
+    const isAllSubcategoriesActive = (Array.isArray(activeSubcategory) && activeSubcategory.length > 0 && activeSubcategory.length === relevantSubcategories.length) ||
         (activeSubcategory === null && hasValidSubcategoriesForDisplay);
 
     return (
-        <Animated.View
+        <Animated.View // This view is animated by filterBarToggleAnim (open/close of filter content)
             style={[
-              styles.filterBarContainer,
-              animatedFilterBarStyle,
+              styles.filterBarContainer, // Basic styling for the filter bar content area
+              animatedFilterBarContentStyle, // Applies height and opacity animation for toggle
               {
                 backgroundColor: colors.filterBarBackground,
                 borderTopColor: colors.filterBarBorder,
-                borderBottomColor: colors.filterBarBorder
+                // borderBottomColor: colors.filterBarBorder, // Bottom border might be part of headerBackground
               }
             ]}
         >
@@ -367,13 +362,11 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.filterBarScrollViewContent}
-              style={styles.filterBarScrollView}
+              style={styles.filterBarScrollView} // Takes full height of its container
               keyboardShouldPersistTaps="handled"
           >
             <View style={styles.filterSection}>
-              <Text style={[styles.filterSectionTitle, { color: colors.textSecondary }]}>
-                Content Type
-              </Text>
+              <Text style={[styles.filterSectionTitle, { color: colors.textSecondary }]}>Type</Text>
               <View style={styles.filterButtonsRow}>
                 {filterOptions.map((option) => {
                   const isFilterActive = activeFilter === option;
@@ -383,23 +376,16 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                           onPress={() => handleSelectFilter(option)}
                           style={[
                             styles.filterBarButton,
-                            {
-                              backgroundColor: isFilterActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg,
-                              borderColor: isFilterActive ? colors.filterBarButtonActiveBorder : colors.filterBarButtonBorder,
-                            }
+                            { backgroundColor: isFilterActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg }
                           ]}
                           accessibilityLabel={`Filter by ${option}`}
                           accessibilityState={{ selected: isFilterActive }}
                       >
-                        <Text
-                            style={[
-                              styles.filterBarButtonText,
-                              { color: isFilterActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
-                              isFilterActive && styles.filterBarButtonTextActive,
-                            ]}
-                        >
-                          {option}
-                        </Text>
+                        <Text style={[
+                          styles.filterBarButtonText,
+                          { color: isFilterActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
+                          isFilterActive && styles.filterBarButtonTextActive
+                        ]}>{option}</Text>
                       </TouchableOpacity>
                   );
                 })}
@@ -413,7 +399,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
             {showSubcategoriesInFilterBar && hasValidSubcategoriesForDisplay && (
                 <View style={styles.filterSection}>
                   <Text style={[styles.filterSectionTitle, { color: colors.textSecondary }]}>
-                    {activeCategory || 'Category'} Topics
+                    {activeCategory || 'Topics'}
                   </Text>
                   <View style={styles.filterButtonsRow}>
                     <TouchableOpacity
@@ -421,23 +407,16 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                         onPress={() => handleSelectSubcategory(relevantSubcategories.length > 0 ? relevantSubcategories : null)}
                         style={[
                           styles.filterBarButton,
-                          {
-                            backgroundColor: isAllSubcategoriesActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg,
-                            borderColor: isAllSubcategoriesActive ? colors.filterBarButtonActiveBorder : colors.filterBarButtonBorder,
-                          }
+                          { backgroundColor: isAllSubcategoriesActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg }
                         ]}
                         accessibilityLabel={`Show all ${activeCategory || 'category'} topics`}
                         accessibilityState={{ selected: isAllSubcategoriesActive }}
                     >
-                      <Text
-                          style={[
-                            styles.filterBarButtonText,
-                            { color: isAllSubcategoriesActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
-                            isAllSubcategoriesActive && styles.filterBarButtonTextActive,
-                          ]}
-                      >
-                        All
-                      </Text>
+                      <Text style={[
+                        styles.filterBarButtonText,
+                        { color: isAllSubcategoriesActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
+                        isAllSubcategoriesActive && styles.filterBarButtonTextActive
+                      ]}>All</Text>
                     </TouchableOpacity>
 
                     {relevantSubcategories.map((subcategory) => {
@@ -449,23 +428,16 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
                               onPress={() => handleSelectSubcategory(subcategory)}
                               style={[
                                 styles.filterBarButton,
-                                {
-                                  backgroundColor: isSubActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg,
-                                  borderColor: isSubActive ? colors.filterBarButtonActiveBorder : colors.filterBarButtonBorder,
-                                }
+                                { backgroundColor: isSubActive ? colors.filterBarButtonActiveBg : colors.filterBarButtonBg }
                               ]}
                               accessibilityLabel={`Filter by ${formattedSubcategory}`}
                               accessibilityState={{ selected: isSubActive }}
                           >
-                            <Text
-                                style={[
-                                  styles.filterBarButtonText,
-                                  { color: isSubActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
-                                  isSubActive && styles.filterBarButtonTextActive,
-                                ]}
-                            >
-                              {formattedSubcategory}
-                            </Text>
+                            <Text style={[
+                              styles.filterBarButtonText,
+                              { color: isSubActive ? colors.filterBarButtonActiveText : colors.filterBarButtonText },
+                              isSubActive && styles.filterBarButtonTextActive
+                            ]}>{formattedSubcategory}</Text>
                           </TouchableOpacity>
                       );
                     })}
@@ -477,389 +449,365 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
     );
   };
 
-  const animatedSearchInputWrapperStyle = { opacity: searchContainerWidth };
-  const normalHeaderStyle = { opacity: opacityAnim };
-  const animatedSearchContainerStyle = { width: searchContainerWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }), opacity: searchContainerWidth.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] }) };
+  // --- Dynamic Styles for Animation States ---
+  const animatedSearchInputWrapperStyle = { opacity: searchContainerWidth }; // For search input field itself
+  const normalHeaderContentStyle = { opacity: mainHeaderContentOpacity }; // For fading out non-search UI
+  const animatedSearchContainerStyle = { // For the entire search overlay container
+    width: searchContainerWidth.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+    opacity: searchContainerWidth.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] }), // Delayed opacity
+  };
   const isFilterApplied = activeFilter !== 'All' || (typeof activeSubcategory === 'string');
 
+  // --- Main Component Render ---
   return (
       <View style={[styles.headerBackground, { backgroundColor: colors.background }]}>
-        {/* Row 1: Profile, Feed Switcher/Title, Icons */}
-        <View style={[styles.mainHeaderContainer]}>
-          <Animated.View style={[styles.normalHeaderContent, normalHeaderStyle, { zIndex: isSearchMode ? 5 : 10 }]}>
+        {/* Row 1: Main Header (Profile, Feed Switcher/Title, Icons) - Always Visible */}
+        <View style={styles.mainHeaderRow}>
+          <Animated.View style={[styles.mainHeaderContent, normalHeaderContentStyle, { zIndex: isSearchMode ? 1 : 10 }]}>
             {renderProfileIcon()}
             {renderFeedTypeSwitcher()}
             <View style={styles.rightIconsContainer}>
               {isChronologicalFeedMode && ( // Filter icon only for chronological
                   <TouchableOpacity onPress={handleToggleFilterBar} style={styles.iconButton} accessibilityLabel="Filter content">
-                    <Icon name="filter-outline" size={iconSize} color={colors.icon} />
-                    {isFilterApplied && <View style={[styles.filterActiveIndicator, { backgroundColor: colors.accent }]}/>}
+                    <Icon name={showFilterBar ? "funnel" : "funnel-outline"} size={ICON_SIZE} color={colors.icon} />
+                    {/* Show dot if filters applied AND filter bar is currently closed */}
+                    {isFilterApplied && !showFilterBar && <View style={[styles.filterActiveDot, { backgroundColor: colors.accent }]} />}
                   </TouchableOpacity>
               )}
-              {/* Search icon only visible in chronological mode */}
-              {!isForYouFeedMode && (
-                <TouchableOpacity onPress={handleToggleSearch} style={styles.iconButton} accessibilityLabel="Search content">
-                  <Icon name="search-outline" size={iconSize} color={colors.icon} />
-                </TouchableOpacity>
+              {!isForYouFeedMode && ( // Search icon not available in "For You"
+                  <TouchableOpacity onPress={handleToggleSearch} style={styles.iconButton} accessibilityLabel="Search content">
+                    <Icon name="search-outline" size={ICON_SIZE} color={colors.icon} />
+                  </TouchableOpacity>
               )}
             </View>
           </Animated.View>
 
-          {/* Search Overlay - covers Row 1 when active */}
+          {/* Search Overlay - Covers Row 1 when active */}
           <Animated.View
               style={[styles.searchOverlayContainer, animatedSearchContainerStyle, { backgroundColor: colors.background }]}
               pointerEvents={isSearchMode ? 'auto' : 'none'}
           >
             <TouchableOpacity onPress={handleToggleSearch} style={styles.searchBackButton} accessibilityLabel="Close search">
-              <Icon name="arrow-back-outline" size={iconSize} color={colors.icon} />
+              <Icon name="arrow-back-outline" size={ICON_SIZE} color={colors.icon} />
             </TouchableOpacity>
             <Animated.View style={[styles.searchInputWrapper, { backgroundColor: colors.searchBg }, animatedSearchInputWrapperStyle]}>
-              <Icon name="search-outline" size={iconSize * 0.75} color={colors.placeholder} style={styles.searchIcon}/>
+              <Icon name="search-outline" size={ICON_SIZE * 0.8} color={colors.placeholder} style={styles.searchIconInInput} />
               <TextInput
                   ref={searchInputRef}
                   style={[styles.searchInput, { color: colors.text }]}
-                  placeholder="Search feed..."
+                  placeholder="Search..." // More concise placeholder
                   placeholderTextColor={colors.placeholder}
-                  value={localSearchQuery} // Use local state
-                  onChangeText={handleSearchChange} // Calls props.onSearch
+                  value={localSearchQuery}
+                  onChangeText={handleSearchChange}
                   returnKeyType="search"
-                  onSubmitEditing={() => {
-                    Keyboard.dismiss();
-                    // Optionally, you could trigger a search explicitly here if needed,
-                    // but typically onChangeText is sufficient for live updates
-                    // or Index.tsx handles search on query change.
-                  }}
+                  onSubmitEditing={Keyboard.dismiss} // Dismiss keyboard on submit
                   autoCorrect={false}
                   autoCapitalize="none"
               />
-              {isSearchLoading ? ( // From props
-                  <ActivityIndicator size="small" color={colors.accent} style={styles.searchLoadingIndicator} />
+              {isSearchLoading ? (
+                  <ActivityIndicator size="small" color={colors.accent} style={styles.searchActivityIndicator} />
               ) : localSearchQuery.length > 0 ? (
                   <TouchableOpacity onPress={handleClearSearch} style={styles.clearSearchButton}>
-                    <Icon name="close-circle" size={iconSize * 0.75} color={colors.placeholder} />
+                    <Icon name="close-circle" size={ICON_SIZE * 0.8} color={colors.placeholder} />
                   </TouchableOpacity>
-              ) : null }
+              ) : null}
             </Animated.View>
           </Animated.View>
         </View>
 
-        {/* Row 2: Category Tabs (only if chronological and not searching) */}
-        {!isSearchMode && isChronologicalFeedMode && renderCategoryTabs()}
+        {/* Row 2: Category Tabs (Animated by scrollY for fade/collapse) */}
+        {/* Render if in chronological, not searching, AND (categories exist OR an active one is named for placeholder) */}
+        {isChronologicalFeedMode && !isSearchMode && (categories.length > 0 || activeCategory) && (
+            <Animated.View style={categoryRowAnimatedStyle}>
+              {renderCategoryTabs()}
+            </Animated.View>
+        )}
 
-        {/* Row 3: Filter Bar (only if chronological, not searching, and filter toggled) */}
-        {!isSearchMode && isChronologicalFeedMode && renderFilterBar()}
+        {/* Row 3: Filter Bar (Animated by scrollY, content animated by filterBarToggleAnim) */}
+        {/* Render if in chronological, not searching, AND filter bar is toggled to be shown */}
+        {isChronologicalFeedMode && !isSearchMode && showFilterBar && (
+            <Animated.View style={filterBarFullRowAnimatedStyle}>
+              {renderFilterBar()}
+            </Animated.View>
+        )}
       </View>
   );
 };
 
-// Styles
-const getStyles = (isDarkTheme: boolean, profileSize: number, colors: any) => StyleSheet.create({
+// --- Minimalist Styles Definition ---
+const getMinimalStyles = (isDarkTheme: boolean, profileSize: number, colors: any) => StyleSheet.create({
   headerBackground: {
-    zIndex: 11,
+    zIndex: 100, // Ensure header is on top of other content
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.borderColor,
+    // backgroundColor set dynamically
   },
-  mainHeaderContainer: {
-    paddingTop: Platform.OS === 'android' ? 8 : 8,
-    paddingBottom: 8,
-    paddingHorizontal: 12,
+  mainHeaderRow: {
+    paddingTop: Platform.OS === 'android' ? 4 : 4, // Minimal top padding for status bar
+    paddingBottom: 4,
+    paddingHorizontal: 10, // Consistent horizontal padding
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: MAIN_HEADER_MIN_HEIGHT,
-    position: 'relative',
+    height: MAIN_HEADER_ROW_HEIGHT,
+    position: 'relative', // For search overlay positioning
   },
-  normalHeaderContent: {
+  mainHeaderContent: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
   },
   profileButton: {
-    padding: 6,
-    marginRight: 10,
+    padding: 4, // Reduced padding for tighter fit
+    marginRight: 6,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 20,
   },
   profileImageContainer: {
-    width: profileSize + 4,
-    height: profileSize + 4,
-    borderRadius: (profileSize + 4) / 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    shadowColor: isDarkTheme ? '#000' : '#999',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  profileImage: {
     width: profileSize,
     height: profileSize,
     borderRadius: profileSize / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background, // Match header bg
+    borderWidth: 1,
+    borderColor: colors.profileBorder,
+  },
+  profileImage: {
+    width: profileSize - 4, // Image slightly smaller than container to show border
+    height: profileSize - 4,
+    borderRadius: (profileSize - 4) / 2,
   },
   profilePlaceholder: {
-    width: profileSize + 4,
-    height: profileSize + 4,
-    borderRadius: (profileSize + 4) / 2,
+    width: profileSize,
+    height: profileSize,
+    borderRadius: profileSize / 2,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: isDarkTheme ? '#2D2D2D' : '#F5F5F7',
-    shadowColor: isDarkTheme ? '#000' : '#999',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
+    backgroundColor: colors.feedSwitcherBg, // Use a common subtle bg for consistency
   },
   feedTypeSwitcherContainer: {
-    flex: 1,
+    flex: 1, // Take available space in the middle
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 8,
-    paddingVertical: 4,
+    marginHorizontal: 8, // Increased spacing from profile/icons
+    maxWidth: '100%', // Increased from 70% to fill more horizontal space
   },
   feedTypeSwitcherInner: {
     flexDirection: 'row',
     backgroundColor: colors.feedSwitcherBg,
-    borderRadius: 10,
+    borderRadius: 8, // Slightly smaller radius for a sleeker look
     overflow: 'hidden',
-    width: '100%',
-    maxWidth: 280, // Limit width for better aesthetics
-    height: FEED_TYPE_SWITCHER_HEIGHT,
-    shadowColor: isDarkTheme ? '#000' : '#999',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    height: FEED_TYPE_SWITCHER_H,
+    padding: 2, // Padding inside to make buttons appear separate from border
+    width: '100%', // Ensure it takes full width of the container
   },
-  feedTypeSwitcherContainerNoSwitch: {
+  feedTypeSwitcherContainerNoSwitch: { // For "Trending" title
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    marginHorizontal: 8,
+    marginHorizontal: 4,
   },
   feedTypeButton: {
     flex: 1,
-    paddingVertical: 8,
     alignItems: 'center',
     justifyContent: 'center',
     height: '100%',
-    borderRadius: 8,
-    margin: 2,
+    borderRadius: 6, // Smaller radius for inner buttons
+    paddingHorizontal: 16, // Increased horizontal padding for better text spacing
+    minWidth: 70, // Ensure minimum width for each button
   },
   feedTypeButtonActive: {
-    shadowColor: isDarkTheme ? '#000' : '#999',
+    // Active style primarily from backgroundColor prop in component
+    shadowColor: '#000', // Subtle shadow for depth
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 3,
+    shadowOpacity: isDarkTheme ? 0.2 : 0.05,
+    shadowRadius: 1,
+    elevation: 2,
   },
   feedTypeButtonText: {
-    fontSize: 15,
+    fontSize: 14, // Slightly increased font size for better readability
     fontWeight: '500',
-    letterSpacing: 0.2,
+    letterSpacing: 0.2, // Add slight letter spacing to prevent cramping
   },
   feedTypeButtonTextActive: {
-    fontWeight: '600',
+    fontWeight: '600', // Slightly bolder for active state
   },
   trendingTitle: {
-    fontSize: 16,
+    fontSize: 15, // Reduced from original
     fontWeight: '600',
   },
-  categoryTabsContainer: {
+  // Category Tabs Styles
+  categoryTabsContainer: { // This is the content part of the animated row
     width: '100%',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderColor,
-    backgroundColor: colors.background,
+    height: '100%', // Takes height from animated wrapper (categoryRowAnimatedStyle)
+    justifyContent: 'center', // Vertically center the ScrollView
   },
   categoriesScrollView: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
     width: '100%',
-    height: CATEGORY_TABS_HEIGHT + 16, // Fixed height for the row with more padding
+    height: '100%', // ScrollView takes full height of its container
   },
   categoriesScrollContainer: {
-    alignItems: 'center',
-    paddingRight: 12, // Ensure last item is visible
+    alignItems: 'center', // Align tabs to the center of their allocated space in ScrollView
+    paddingHorizontal: 10, // Match main header horizontal padding
+    // Vertical padding to center tabs within the CATEGORY_TABS_ROW_H
+    paddingVertical: (CATEGORY_TABS_ROW_H - CATEGORY_TAB_H) / 2,
   },
   categoryButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 18, // More rounded for Apple-like pill shape
-    marginHorizontal: 4,
+    paddingHorizontal: 12, // Reduced horizontal padding
+    marginHorizontal: 4,   // Reduced horizontal margin
+    height: CATEGORY_TAB_H,
+    borderRadius: 14,      // Pill shape (half of height for perfect rounding)
     justifyContent: 'center',
     alignItems: 'center',
-    height: CATEGORY_TABS_HEIGHT,
-    position: 'relative', // For the active indicator
+    position: 'relative', // For the active indicator dot
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: 12.5, // Reduced font size for compactness
     fontWeight: '500',
-    textAlign: 'center',
     letterSpacing: 0.1,
   },
   categoryTextActive: {
-    fontWeight: '600',
+    fontWeight: '600', // Bolder for active category
   },
-  categoryActiveIndicator: {
+  categoryActiveIndicator: { // Small dot indicator for active category
     position: 'absolute',
-    bottom: -2,
-    left: '50%',
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
-    marginLeft: -2, // Center the dot
+    bottom: 3, // Positioned closer to the text
+    width: 4, height: 4, borderRadius: 2,
+    // backgroundColor set by props
   },
   categoryTabsPlaceholder: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     width: '100%',
-    height: CATEGORY_TABS_HEIGHT + 16,
-    justifyContent: 'center',
+    justifyContent: 'center', // Center placeholder text
     alignItems: 'center',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderColor,
+    // height is 100% of its animated container
   },
   categoryPlaceholderText: {
-    fontSize: 14,
+    fontSize: 12.5,
     fontWeight: '500',
-    letterSpacing: 0.1,
-    // color set dynamically
+    // color set by props
   },
+  // Right Icons (Filter, Search)
   rightIconsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 20,
   },
   iconButton: {
-    padding: 6,
-    marginLeft: 6,
-    position: 'relative',
+    padding: 6, // Standard small padding for icon buttons
+    marginLeft: 4, // Reduced margin between icons
+    position: 'relative', // For filter active dot
   },
-  filterActiveIndicator: {
+  filterActiveDot: { // Dot indicator if filters are applied
     position: 'absolute',
-    top: 5,
-    right: 5,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    top: 5, right: 5,
+    width: 5, height: 5, borderRadius: 2.5,
+    // backgroundColor set by props
   },
+  // Search Overlay Styles
   searchOverlayContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    bottom: 0,
-    right: 0,
+    position: 'absolute', // Overlay behavior
+    top: 0, left: 0, bottom: 0, right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: (MAIN_HEADER_MIN_HEIGHT - 40) / 2, // Adjusted for taller search input
-    zIndex: 15,
-    overflow: 'hidden',
-    backgroundColor: colors.background,
+    paddingHorizontal: 10, // Consistent padding
+    // Vertical padding to center search input within MAIN_HEADER_ROW_HEIGHT
+    paddingVertical: (MAIN_HEADER_ROW_HEIGHT - SEARCH_INPUT_H) / 2,
+    zIndex: 5, // Ensure it's above mainHeaderContent when active
+    // backgroundColor set by props
   },
   searchBackButton: {
-    padding: 8,
-    marginRight: 8,
-    borderRadius: 20,
+    padding: 6,
+    marginRight: 6, // Space between back button and input field
   },
   searchInputWrapper: {
-    flex: 1,
+    flex: 1, // Take remaining width
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 20, // More rounded for Apple-like appearance
-    paddingHorizontal: 12,
-    height: 40, // Taller for better touch target
-    backgroundColor: colors.searchBg,
-    shadowColor: isDarkTheme ? '#000' : '#999',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
+    borderRadius: 17, // Half of SEARCH_INPUT_H for pill shape
+    paddingHorizontal: 10,
+    height: SEARCH_INPUT_H,
+    // backgroundColor set by props
   },
-  searchIcon: {
-    marginRight: 8,
+  searchIconInInput: { // Icon inside the search bar
+    marginRight: 6,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16, // Larger font size for better readability
-    fontWeight: '400',
-    height: '100%',
-    paddingVertical: 0,
-    color: colors.text,
+    fontSize: 14, // Reduced font size for search input
+    height: '100%', // Fill wrapper height
+    paddingVertical: 0, // Remove default TextInput padding
+    // color set by props
   },
   clearSearchButton: {
-    padding: 6,
-    marginLeft: 6,
+    padding: 4, marginLeft: 4,
   },
-  searchLoadingIndicator: {
-    padding: 6,
-    marginLeft: 6,
+  searchActivityIndicator: {
+    padding: 4, marginLeft: 4,
   },
-  filterBarContainer: {
-    // height is animated
-    overflow: 'hidden',
-    zIndex: 10, // Ensure it's below main header but above content list
+  // Filter Bar Styles
+  filterBarContainer: { // This is the content area animated by filterBarToggleAnim
+    overflow: 'hidden', // Essential for height animation
     width: '100%',
-    backgroundColor: colors.filterBarBackground,
-    // borderTopWidth might be applied by animation
+    borderTopWidth: StyleSheet.hairlineWidth, // Separator from categories or main header
+    // backgroundColor, borderTopColor set by props
+    // height is animated by filterBarToggleAnim
   },
   filterBarScrollView: {
-    flex: 1,
+    flex: 1, // Takes full height of its container (which is animated by filterBarToggleAnim)
   },
   filterBarScrollViewContent: {
-    flexGrow: 1,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 4,
+    alignItems: 'center', // Align filter buttons
+    paddingHorizontal: 10, // Consistent horizontal padding
+    // Vertical padding to center filter buttons within FILTER_BAR_ROW_H
+    paddingVertical: (FILTER_BAR_ROW_H - FILTER_BUTTON_H) / 2,
   },
   filterBarButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 18, // More rounded for Apple-like pill shape
-    marginHorizontal: 5,
+    paddingHorizontal: 10, // Reduced padding for smaller buttons
+    marginHorizontal: 4,   // Reduced margin
+    height: FILTER_BUTTON_H,
+    borderRadius: 15,      // Pill shape (half of height)
     justifyContent: 'center',
     alignItems: 'center',
-    height: 34,
-    backgroundColor: colors.filterBarButtonBg,
-    shadowColor: isDarkTheme ? '#000' : '#999',
+    // backgroundColor set by props
+    shadowColor: '#000', // Subtle shadow for buttons
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1,
+    shadowOpacity: isDarkTheme ? 0.15 : 0.03,
+    shadowRadius: 0.5,
     elevation: 1,
   },
   filterBarButtonText: {
-    fontSize: 13,
+    fontSize: 12, // Reduced font size
     fontWeight: '500',
-    textAlign: 'center',
-    letterSpacing: 0.1,
   },
   filterBarButtonTextActive: {
     fontWeight: '600',
   },
   filterBarSeparator: {
-    width: 1,
-    height: '70%',
-    marginHorizontal: 12,
-    backgroundColor: colors.filterBarSeparator,
-    opacity: 0.6,
+    width: StyleSheet.hairlineWidth, // Thinner separator line
+    height: '60%', // Relative height to content
+    marginHorizontal: 8, // Spacing around separator
+    opacity: 0.5, // Make it less prominent
+    // backgroundColor set by props
   },
   filterSection: {
-    paddingHorizontal: 6,
-    marginVertical: 4,
+    paddingHorizontal: 4, // Minimal padding around section title and buttons
+    marginVertical: 0,    // Vertical spacing controlled by row height and padding
+    flexDirection: 'row', // Changed to row to place title next to buttons
+    alignItems: 'center', // Center items vertically
   },
   filterSectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 8,
-    paddingHorizontal: 6,
-    color: colors.textSecondary,
-    letterSpacing: 0.1,
+    fontSize: 10, // Very small title for sections
+    fontWeight: '500',
+    marginRight: 8, // Changed from marginBottom to marginRight
+    paddingHorizontal: 4, // Align with button row if needed
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+    // color set by props
   },
   filterButtonsRow: {
     flexDirection: 'row',
-    flexWrap: 'nowrap',
     alignItems: 'center',
+    flex: 1, // Take remaining space
   },
 });
 

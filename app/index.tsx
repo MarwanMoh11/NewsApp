@@ -58,6 +58,7 @@ const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 const PAGE_LIMIT = 15;
 const MAX_ITEMS_TO_KEEP = 150;
 const ESTIMATED_ITEM_HEIGHT = 300;
+const scrollY = useRef(new Animated.Value(0)).current;
 
 // Modals (Lazy Loaded - Unchanged)
 const ArticleModal = React.lazy(() => import('./articlepage'));
@@ -1054,6 +1055,7 @@ const Index: React.FC = () => {
                 onSearch={handleSearchChange}
                 searchQuery={searchQuery}
                 isLoading={loadingLogin}
+                scrollY={scrollY}
                 isSearchLoading={isSearchLoading}
             />
 
@@ -1104,6 +1106,12 @@ const Index: React.FC = () => {
           ) : null
         }
         contentContainerStyle={dynamicStyles.listContentContainer}
+        onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: false } // Set to true if HeaderTabs animations allow for it (opacity yes, height no)
+            // For your HeaderTabs, height animations are used, so keep it false for now.
+        )}
+        scrollEventThrottle={16}
       />
 
       {/* Modals (Complete) */}
