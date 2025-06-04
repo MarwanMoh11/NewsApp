@@ -119,7 +119,7 @@ const CommentCard: React.FC<CommentCardProps> = React.memo(({ comment, profilePi
 interface ArticleModalProps {
   visible: boolean;
   onClose: () => void;
-  articleId: number | null;
+  articleId: string | null;
 }
 
 // ----------------- ArticleModal Component (TweetModal Image Logic Applied) -----------------
@@ -364,7 +364,7 @@ const ArticleModal: React.FC<ArticleModalProps> = ({ visible, onClose, articleId
     }
   };
 
-  const fetchArticleDetails = async (id: number): Promise<any | null> => {
+  const fetchArticleDetails = async (id: string): Promise<any> => {
     // Original fetchArticleDetails logic
     setArticleData(null);
     try {
@@ -389,7 +389,7 @@ const ArticleModal: React.FC<ArticleModalProps> = ({ visible, onClose, articleId
     }
   };
 
-  const fetchExplanation = async (id: number | null = null) => {
+  const fetchExplanation = async (id?: string) => {
     // Original fetchExplanation logic
     const targetId = id ?? articleData?.id;
     if (!targetId) return;

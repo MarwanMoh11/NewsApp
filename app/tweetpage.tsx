@@ -106,6 +106,8 @@ const CommentCard: React.FC<CommentCardProps> = React.memo(({ comment, profilePi
     }
   };
 
+
+
   return (
       <View style={[styles.commentCard, { borderBottomColor: colors.borderColor }]}>
         {/* --- Wrap header in TouchableOpacity --- */}
@@ -226,6 +228,15 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   const currentTheme = isDarkTheme ? themes.dark : themes.light;
 
   // --- Helper Functions ---
+    const handleInitiateClose = () => {
+        console.log("[TweetModal] Close initiated by user. Hiding in-app message first.");
+        setMessageVisible(false); // Immediately hide the in-app message
+        setMessageText('');
+        setMessageType('info');
+
+        onClose(); // Call the original onClose prop to tell the parent to close the modal
+    };
+
   const showInAppMessage = useCallback((text: string, type: 'info' | 'error' | 'success' = 'info') => {
     setMessageText(text);
     setMessageType(type);
@@ -327,6 +338,9 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
       setCurrentUserPfp(null); // Reset current user PFP
       setProfilePictures({});
       setComment('');
+      setMessageVisible(false);
+      setMessageText('');
+      setMessageType('info');
     }
 
     // Fetch data when modal becomes visible with a valid link and token
@@ -733,7 +747,7 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
     <Modal
       visible={visible}
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={handleInitiateClose}
       transparent={false}
     >
         {/* Add a container with theme background */}
@@ -742,7 +756,7 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
             <View style={[styles.modalHeader, { borderBottomColor: currentTheme.borderColor }]}>
                 <View style={styles.headerSpacer} />{/* Left Spacer */}
                 <Text style={[styles.modalTitle, { color: currentTheme.textPrimary }]}>Tweet/BlueSky Details</Text>
-                  <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+                  <TouchableOpacity onPress={handleInitiateClose} style={styles.closeButton}>
                                     <Icon name="close-outline" size={28} color={currentTheme.accent} />
                   </TouchableOpacity>
             </View>

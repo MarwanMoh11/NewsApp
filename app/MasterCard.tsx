@@ -154,6 +154,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
 
   // --- Icon Selection (MODIFIED) ---
   let TypeIcon = <Icon name="newspaper-outline" size={16} color={colors.articleColor} style={styles.typeIcon} />; // Default to article
+  console.log('This is the logo type: ', type);
   if (type === 'tweet') {
     TypeIcon = <Icon name="logo-twitter" size={16} color={colors.twitterColor} style={styles.typeIcon} />;
   } else if (type === 'bluesky') {
@@ -169,6 +170,21 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
                                   : type === 'bluesky' ? "Image attached to Bluesky post"
                                   : "Article lead image"; // Default
 
+  let contentSummary;
+// Use text_content, which defaults to '' if item.text_content was null/undefined
+  if (text_content && text_content.trim().length > 0) { // Check if there's actual non-whitespace text
+    if (text_content.length > 50) {
+      contentSummary = `${text_content.substring(0, 50)}...`; // Truncate and add "..."
+    } else {
+      contentSummary = text_content; // Use full text if short, no "..." added by this step
+    }
+  } else {
+    contentSummary = "No specific text content provided."; // Descriptive placeholder
+  }
+
+// Construct the full accessibility label for the TouchableOpacity
+  const fullTouchableOpacityAccessibilityLabel = `${accessibilityLabel} from ${author}. ${contentSummary}`;
+
 
   return (
     <TouchableOpacity
@@ -177,7 +193,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
       activeOpacity={0.8}
       accessible={true}
       // MODIFIED: Updated accessibility label
-      accessibilityLabel={`${accessibilityLabel} from ${author}. ${text_content.substring(0, 50)}...`}
+      accessibilityLabel={fullTouchableOpacityAccessibilityLabel}
       accessibilityRole="button"
     >
       {/* Header: Author/Source, Time, and Type Icon */}
@@ -200,8 +216,6 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
          {TypeIcon}
       </View>
 
-      {/* Text Content (Tweet, Skeet, or Headline) */}
-      {/* ... (Text content rendering unchanged) ... */}
        {text_content ? (
         <View style={styles.contentContainer}>
            <Text

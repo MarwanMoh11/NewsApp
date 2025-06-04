@@ -911,162 +911,163 @@ router.post('/get-for-you-feed', (req, res) => {
 
 /**
  * @route POST /get-chronological-feed
- * @description Gets BOTH Tweets and Articles sorted strictly by creation date,
- * with optional category/region filters and pagination.
+ * @description Gets Tweets, BlueSky posts, and/or Articles sorted strictly by creation date,
+ * with optional category, region, and item type filters, and pagination.
  * @access Public
  */
 router.post('/get-chronological-feed', (req, res) => {
-  const { categories, region, page = 1, limit = 15 } = req.body;
+    const { categories, region, page = 1, limit = 15, itemTypeFilter = 'all' } = req.body; // Added itemTypeFilter, default to 'all'
 
-  const pageNumber = parseInt(page, 10);
-  const limitNumber = parseInt(limit, 10);
-  if (isNaN(pageNumber) || pageNumber < 1 || isNaN(limitNumber) || limitNumber < 1) {
-    return res.status(400).json({ status: 'Error', error: 'Invalid page or limit parameter.' });
-  }
-  const offset = (pageNumber - 1) * limitNumber;
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
 
-  // --- Build WHERE Clauses and Params ---
-  let tweetWhereClause = '';
-  let articleWhereClause = '';
-  const tweetParams = [];
-  const articleParams = [];
-  const finalParams = [];
-
-  const hasCategories = categories && Array.isArray(categories) && categories.length > 0;
-  const hasRegion = region && typeof region === 'string' && region.trim() !== '';
-
-  const conditions = [];
-
-  // Category Filter
-  if (hasCategories) {
-    const validCategories = categories.map(cat => String(cat).trim()).filter(cat => cat.length > 0);
-    if (validCategories.length > 0) {
-        // Tweet category filter (FIND_IN_SET)
-        const tweetCatConditions = validCategories.map(() => `FIND_IN_SET(?, T.categories) > 0`).join(' OR ');
-        conditions.push(`(${tweetCatConditions})`);
-        tweetParams.push(...validCategories);
-
-        // Article category filter (LIKE - assuming single category string)
-        const articleCatConditions = validCategories.map(() => `A.category LIKE ?`).join(' OR ');
-        articleParams.push(...validCategories.map(cat => `%${cat}%`)); // Use LIKE for articles potentially
-
-        // Add to final params ONLY ONCE for the combined query logic below
-        finalParams.push(...validCategories); // For Tweets part
-        finalParams.push(...validCategories.map(cat => `%${cat}%`)); // For Articles part
+    if (isNaN(pageNumber) || pageNumber < 1 || isNaN(limitNumber) || limitNumber < 1) {
+        return res.status(400).json({ status: 'Error', error: 'Invalid page or limit parameter.' });
     }
-  }
+    const offset = (pageNumber - 1) * limitNumber;
 
-  // Region Filter
-  if (hasRegion) {
-    const trimmedRegion = region.trim();
-    conditions.push(`(T.Region = ? OR A.Region = ?)`); // Filter either tweet or article region if applicable
-    tweetParams.push(trimmedRegion);
-    // articleParams.push(trimmedRegion); // Only add if Articles table has a Region column
-    finalParams.push(trimmedRegion);
-    // finalParams.push(trimmedRegion); // Add second time if Articles have region
-  }
+    const querySegments = [];
+    const allQueryParams = [];
 
+    const hasCategories = categories && Array.isArray(categories) && categories.length > 0;
+    const hasRegion = region && typeof region === 'string' && region.trim() !== '';
+    const trimmedRegion = hasRegion ? region.trim() : null;
 
-  // Construct WHERE clauses - Reuse finalParams for simplicity in the combined query
-  let combinedWhereClause = '';
-  if(conditions.length > 0){
-      // This generic clause attempts to filter based on aliases in the subqueries
-      // It's complex because filters apply differently to tweets vs articles
-      // A simpler approach might be separate WHERE clauses inside each UNION part if possible
-      // For now, let's try applying filters AFTER UNION (less efficient but simpler SQL)
-      // We will filter in JS after fetching a slightly larger dataset if needed,
-      // OR apply filters within each UNION part (more complex param handling)
+    const validCategories = (hasCategories)
+        ? categories.map(cat => String(cat).trim()).filter(cat => cat.length > 0)
+        : [];
 
-      // Let's try applying within each UNION part (more efficient)
-      const tweetWhereParts = [];
-      const articleWhereParts = [];
+    // --- Tweets and BlueSky Posts Segment ---
+    if (itemTypeFilter === 'all' || itemTypeFilter === 'tweet' || itemTypeFilter === 'bluesky') {
+        const socialWhereParts = [];
+        const socialParams = [];
 
-      if (hasCategories) {
-         const validCategories = categories.map(cat => String(cat).trim()).filter(cat => cat.length > 0);
-         if (validCategories.length > 0) {
-             tweetWhereParts.push(`(${validCategories.map(() => `FIND_IN_SET(?, T.categories) > 0`).join(' OR ')})`);
-             articleWhereParts.push(`(${validCategories.map(() => `A.category LIKE ?`).join(' OR ')})`);
-         }
-      }
-       if (hasRegion) {
-           tweetWhereParts.push('T.Region = ?');
-           // articleWhereParts.push('A.Region = ?'); // Add if articles have region
-       }
+        if (validCategories.length > 0) {
+            socialWhereParts.push(`(${validCategories.map(() => `FIND_IN_SET(?, T.categories) > 0`).join(' OR ')})`);
+            socialParams.push(...validCategories);
+        }
 
-       tweetWhereClause = tweetWhereParts.length > 0 ? `WHERE ${tweetWhereParts.join(' AND ')}` : '';
-       articleWhereClause = articleWhereParts.length > 0 ? `WHERE ${articleWhereParts.join(' AND ')}` : '';
-  }
+        if (trimmedRegion) {
+            socialWhereParts.push('T.Region = ?');
+            socialParams.push(trimmedRegion);
+        }
 
-   // Rebuild finalParams based on WHERE clauses
-   const finalQueryParams = [];
-   if (hasCategories) finalQueryParams.push(...categories.map(cat => String(cat).trim()).filter(cat => cat.length > 0));
-   if (hasRegion) finalQueryParams.push(region.trim());
-   if (hasCategories) finalQueryParams.push(...categories.map(cat => String(cat).trim()).filter(cat => cat.length > 0).map(cat => `%${cat}%`));
-   // if (hasRegion && articleHasRegion) finalQueryParams.push(region.trim()); // Add region param again if articles have it
-   finalQueryParams.push(limitNumber, offset);
+        // Filter by specific item type if not 'all'
+        // This assumes T.sourcename (or another designated column) holds values like 'tweet', 'bluesky'
+        // that directly match the itemTypeFilter values sent from the frontend.
+        // If T.sourcename is "Twitter", "BlueSky Platform", you'd need to map:
+        // e.g., if (itemTypeFilter === 'tweet') socialWhereParts.push(`T.sourcename = 'Twitter'`);
+        // For simplicity here, we assume direct match or T.sourcename is already the item_type.
+        if (itemTypeFilter === 'tweet' || itemTypeFilter === 'bluesky') {
+            socialWhereParts.push('T.sourcename = ?'); // Or T.your_type_column = ?
+            socialParams.push(itemTypeFilter);
+        } else if (itemTypeFilter === 'all') {
+            // If 'all' types are requested, ensure we only get known social types from this table
+            // if the Tweets table could contain other non-feed sourcenames.
+            socialWhereParts.push(`T.sourcename IN ('tweet', 'bluesky')`); // No params needed for this part if hardcoded
+        }
 
 
-  // --- Construct Final SQL Query with UNION ALL ---
-  const query = `
+        const socialWhereClause = socialWhereParts.length > 0 ? `WHERE ${socialWhereParts.join(' AND ')}` : '';
+
+        querySegments.push(`
+      (
+        SELECT
+            T.sourcename AS item_type, -- IMPORTANT: Ensure this column value is 'tweet' or 'bluesky'
+            T.Tweet_Link AS item_id,
+            T.Username AS author,
+            T.Tweet AS text_content,
+            T.Created_At AS created_at,
+            T.Media_URL AS media_url,
+            T.categories AS categories,
+            T.Region AS region,
+            T.Retweets,
+            T.Favorites,
+            T.Explanation
+        FROM Tweets T  -- Assuming this table contains both Tweets and BlueSky posts
+        ${socialWhereClause}
+      )
+    `);
+        allQueryParams.push(...socialParams);
+    }
+
+    // --- Articles Segment ---
+    const articlesHaveFilterableRegion = true; // SET THIS BASED ON YOUR Articles TABLE SCHEMA (e.g., true if A.Region exists)
+    const articleRegionColumnName = 'A.Region';   // SET THIS to actual region column name in Articles table
+
+    if (itemTypeFilter === 'all' || itemTypeFilter === 'article') {
+        const articleWhereParts = [];
+        const articleParams = [];
+
+        if (validCategories.length > 0) {
+            articleWhereParts.push(`(${validCategories.map(() => `A.category LIKE ?`).join(' OR ')})`);
+            articleParams.push(...validCategories.map(cat => `%${cat}%`));
+        }
+
+        if (trimmedRegion && articlesHaveFilterableRegion) {
+            articleWhereParts.push(`${articleRegionColumnName} = ?`);
+            articleParams.push(trimmedRegion);
+        }
+
+        const articleWhereClause = articleWhereParts.length > 0 ? `WHERE ${articleWhereParts.join(' AND ')}` : '';
+
+        querySegments.push(`
+      (
+        SELECT
+            'article' AS item_type,
+            A.id AS item_id,
+            A.authors AS author,
+            A.headline AS text_content,
+            A.date AS created_at,
+            A.image_url AS media_url,
+            A.category AS categories,
+            ${articlesHaveFilterableRegion ? articleRegionColumnName : 'NULL'} AS region,
+            NULL AS Retweets,
+            NULL AS Favorites,
+            A.Explanation AS Explanation
+        FROM Articles A
+        ${articleWhereClause}
+      )
+    `);
+        allQueryParams.push(...articleParams);
+    }
+
+    // --- Combine Segments and Execute ---
+    if (querySegments.length === 0) {
+        // This can happen if itemTypeFilter is invalid or doesn't match any segment
+        return res.json({ status: 'No content found for the given criteria (no query segments)', data: [] });
+    }
+
+    const unionClause = querySegments.join(' UNION ALL ');
+    const finalQuery = `
     SELECT * FROM (
-        (
-            SELECT
-                T.sourcename AS item_type,
-                T.Tweet_Link AS item_id,
-                T.Username AS author,
-                T.Tweet AS text_content,
-                T.Created_At AS created_at,
-                T.Media_URL AS media_url,
-                T.categories AS categories,
-                T.Region AS region,
-                T.Retweets,
-                T.Favorites,
-                T.Explanation
-            FROM Tweets T
-            ${tweetWhereClause} -- Apply tweet filters here
-        )
-        UNION ALL
-        (
-            SELECT
-                'article' AS item_type,
-                A.id AS item_id, -- Ensure type compatibility or cast later
-                A.authors AS author,
-                A.headline AS text_content,
-                A.date AS created_at,
-                A.image_url AS media_url,
-                A.category AS categories, -- Single category for articles
-                NULL AS region, -- Or A.Region if exists
-                NULL AS Retweets,
-                NULL AS Favorites,
-                A.Explanation AS Explanation
-            FROM Articles A
-             ${articleWhereClause} -- Apply article filters here
-        )
+      ${unionClause}
     ) AS CombinedFeed
-    ORDER BY created_at DESC -- Order the combined results
-    LIMIT ? OFFSET ?; -- Paginate the combined results
+    ORDER BY created_at DESC
+    LIMIT ? OFFSET ?;
   `;
+    allQueryParams.push(limitNumber, offset);
 
-  console.log(`Executing /get-chronological-feed Combined Query (Page: ${pageNumber}, Limit: ${limitNumber})`);
-  // console.log("SQL Query:", pool.format(query, finalQueryParams)); // Use pool.format for debugging params
+    console.log(`Executing /get-chronological-feed (Page: ${pageNumber}, Limit: ${limitNumber}, TypeFilter: ${itemTypeFilter}, Categories: ${validCategories.join(',') || 'None'}, Region: ${trimmedRegion || 'None'})`);
+    // For debugging, it's invaluable:
+    // console.log("Formatted SQL:", pool.format(finalQuery, allQueryParams));
 
-  pool.query(query, finalQueryParams, (err, results) => {
-    if (err) {
-      console.error("Combined Chronological Feed Fetch Error:", err.message);
-      return res.status(500).json({ status: 'Error', error: 'Database error fetching combined chronological feed.' });
-    }
-    if (Array.isArray(results)) {
-        console.log(`/get-chronological-feed Combined Found: ${results.length}`);
-        // Frontend needs to handle the different fields now based on item_type
-        return res.json({
-            status: results.length > 0 ? 'Content found' : 'No content found for the given criteria',
-            data: results,
-        });
-    } else {
-         console.error("Unexpected result format from DB (/get-chronological-feed Combined):", results);
-         return res.status(500).json({ status: 'Error', error: 'Unexpected database response format.' });
-    }
-  });
+    pool.query(finalQuery, allQueryParams, (err, results) => {
+        if (err) {
+            console.error("Combined Chronological Feed Fetch Error:", err.message, "\nQuery attempted:", pool.format(finalQuery, allQueryParams));
+            return res.status(500).json({ status: 'Error', error: 'Database error fetching combined chronological feed.' });
+        }
+        if (Array.isArray(results)) {
+            console.log(`/get-chronological-feed Combined Found: ${results.length}`);
+            return res.json({
+                status: results.length > 0 ? 'Content found' : 'No content found for the given criteria',
+                data: results,
+            });
+        } else {
+            console.error("Unexpected result format from DB (/get-chronological-feed Combined):", results);
+            return res.status(500).json({ status: 'Error', error: 'Unexpected database response format.' });
+        }
+    });
 });
 
 router.post('/check-login', (req, res) => {

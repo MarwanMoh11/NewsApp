@@ -1,42 +1,30 @@
 // Index.tsx
 
-import React, {
-  useState,
-  useEffect,
-  useContext,
-  useRef,
-  useCallback,
-  Suspense,
-  memo,
-} from 'react';
+import React, {memo, Suspense, useCallback, useContext, useEffect, useRef, useState,} from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
-  Platform,
-  TouchableOpacity,
-  SafeAreaView,
-  StatusBar,
-  Image,
-  TextInput,
-  Keyboard,
-  LayoutAnimation,
-  UIManager,
-  I18nManager,
-  Dimensions,
-  Animated, // Keep if used elsewhere
-  // Modal, Button, FlatList removed (no longer needed for category selection here)
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    I18nManager,
+    LayoutAnimation,
+    Platform,
+    SafeAreaView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    UIManager,
+    View,
 } from 'react-native';
-import { FlashList } from "@shopify/flash-list";
-import { useRouter, usePathname, useLocalSearchParams } from 'expo-router';
-import { makeRedirectUri, useAuthRequest, AuthRequestPromptOptions } from 'expo-auth-session';
+import {FlashList} from "@shopify/flash-list";
+import {useLocalSearchParams, usePathname, useRouter} from 'expo-router';
+import {makeRedirectUri, Prompt, useAuthRequest} from 'expo-auth-session';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 // Import Contexts and Components (ADJUST PATHS AS NEEDED)
-import { UserContext } from '../app/UserContext';
-import { ScrollContext } from './ScrollContext';
+import {UserContext} from '@/app/UserContext';
+import {ScrollContext} from './ScrollContext';
 import HeaderTabs from '../components/HeaderTabs';
 import MasterCard from '../components/MasterCard';
 import ChronicallyButton from '../components/ui/ChronicallyButton';
@@ -53,7 +41,7 @@ I18nManager.forceRTL(false);
 // Config (Unchanged)
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
 const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
-const redirectUri = makeRedirectUri({ useProxy: Platform.OS !== 'web', path: 'loginstatus' });
+const redirectUri = makeRedirectUri({ path: 'loginstatus' });
 const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 const PAGE_LIMIT = 15;
 const MAX_ITEMS_TO_KEEP = 150;
@@ -159,6 +147,7 @@ const Index: React.FC = () => {
   const fetchControllerRef = useRef<AbortController | null>(null);
 
 
+
   // --- Utility Functions (Complete) ---
   const showLoginMessage = useCallback((text: string = "Please log in to access this feature.", type: 'info' | 'error' | 'success' = 'info') => {
     setMessageText(text);
@@ -185,7 +174,9 @@ const Index: React.FC = () => {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         if (data.status === 'Success' && Array.isArray(data.data)) {
-            const fetchedPrefs: string[] = data.data.map((item: any) => item?.preference).filter((pref): pref is string => typeof pref === 'string');
+            const fetchedPrefs: string[] = data.data
+                .map((item: any) => item?.preference)
+                .filter((pref: any): pref is string => typeof pref === 'string');
             return fetchedPrefs.length > 0 ? fetchedPrefs : defaultUserPreferences;
         } else {
             console.warn('Preference fetch issue:', data.message || 'No preferences found');
@@ -433,8 +424,7 @@ const Index: React.FC = () => {
             const existingIds = new Set(prev.map(item => item.id));
             const newUniqueItems = fetchedItems.filter(item => !existingIds.has(item.id));
             const combined = [...prev, ...newUniqueItems];
-            const pruned = combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
-            return pruned;
+              return combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
           });
         }
         const potentiallyMore = dataLength >= PAGE_LIMIT;
@@ -531,8 +521,7 @@ const Index: React.FC = () => {
                         const existingIds = new Set(prev.map(item => item.id));
                         const newUniqueItems = fetchedItems.filter(item => !existingIds.has(item.id));
                         const combined = [...prev, ...newUniqueItems];
-                        const pruned = combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
-                        return pruned;
+                        return combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
                     });
                 }
                 const potentiallyMore = dataLength >= PAGE_LIMIT;
@@ -567,7 +556,7 @@ const Index: React.FC = () => {
       scopes: ['openid', 'profile', 'email'],
       usePKCE: false,
       // NOTE: No extraParams/audience here like in the new hook
-      prompt: 'login', // Add prompt: 'login' like the old version had
+      prompt: Prompt.Login, // Add prompt: 'login' like the old version had
     },
     {
       authorizationEndpoint: `https://${domain}/authorize`
@@ -582,8 +571,7 @@ const Index: React.FC = () => {
 
       if (Platform.OS === 'web') {
         // Use the same URL construction method as the old version
-        const authUrlWeb = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile%20email&prompt=login`;
-        window.location.href = authUrlWeb;
+          window.location.href = `https://${domain}/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid%20profile%20email&prompt=login`;
       } else {
         try {
           if (request) {
@@ -648,7 +636,7 @@ const Index: React.FC = () => {
        if (controller.signal.aborted) { console.log("[handleSearchQuery] Search aborted."); return; }
        if (!response.ok) { const errorText = await response.text(); console.error(`[handleSearchQuery] Search Error ${response.status}:`, errorText); let errorMsg = `Search failed: ${response.status}`; try { const errorData = JSON.parse(errorText); errorMsg = errorData.error || errorData.message || errorMsg; } catch (e) {} throw new Error(errorMsg); }
        const data = await response.json(); console.log(`[handleSearchQuery] Raw data received:`, data.status, `(${data?.data?.length || 0} items)`);
-       let fetchedItems: any[] = []; let dataLength = 0;
+       let fetchedItems: any[] = []; let dataLength: number;
        if (data.status === 'Success' && Array.isArray(data.data)) {
 
          // *** CORRECTED MAPPING - Use direct field names from backend ***
@@ -1246,33 +1234,4 @@ const getStyles = (isDarkTheme: boolean) => {
 
 
 // --- Error Boundary (Complete) ---
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
-    constructor(props: { children: React.ReactNode }) { super(props); this.state = { hasError: false, error: null }; }
-    static getDerivedStateFromError(error: Error) { return { hasError: true, error: error }; }
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) { console.error('ErrorBoundary caught an error:', error, errorInfo); /* Log to error reporting service */ }
-    render() {
-        if (this.state.hasError) {
-        const styles = getStyles(false);
-        const themeBackgroundColor = '#F8F9FA';
-        const colors = { error: '#D93025', text: '#1C1C1E', textSecondary: '#6C6C6E' };
-
-        return (
-            <SafeAreaView style={[styles.loadingContainer, { backgroundColor: themeBackgroundColor }]}>
-            <StatusBar barStyle="dark-content" backgroundColor={themeBackgroundColor} />
-            <Icon name="alert-circle-outline" size={60} color={colors.error} />
-            <Text style={{ fontSize: fontSizes.large, color: colors.text, marginTop: 15, textAlign: 'center', paddingHorizontal: 20, fontWeight: '600' }}>
-                Oops! Something went wrong.
-            </Text>
-            <Text style={{ fontSize: fontSizes.base, color: colors.textSecondary, marginTop: 10, textAlign: 'center', paddingHorizontal: 20 }}>
-                Please try restarting the app. {__DEV__ && this.state.error && `\n\n${this.state.error.toString()}`}
-            </Text>
-            </SafeAreaView>
-        );
-        }
-        return this.props.children;
-    }
-}
-
-
 // --- Final Export ---
-export default Index;

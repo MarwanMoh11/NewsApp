@@ -15,7 +15,8 @@ import {
   Keyboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { UserContext } from '../app/UserContext'; // Adjust path if needed
+import { UserContext } from '@/app/UserContext'; // Adjust path if needed
+export type ContentTypeFilterValue = "All" | "Tweets" | "Articles" | "BlueSky";
 
 // --- Define the props interface ---
 export interface HeaderTabsProps {
@@ -32,7 +33,7 @@ export interface HeaderTabsProps {
   onSubcategorySelect?: (subcategory: string | string[] | null) => void;
 
   activeFilter?: string;
-  onContentTypeFilterChange?: (filter: string) => void;
+  onContentTypeFilterChange?: (filter: ContentTypeFilterValue) => void;
 
   username?: string | null;
   profilePictureUrl?: string | null;
@@ -64,28 +65,28 @@ const SCROLL_OPACITY_ANIM_END = SCROLL_ANIM_END / 2; // Scroll position for full
 
 // --- Component Definition ---
 const HeaderTabs: React.FC<HeaderTabsProps> = ({
-                                                 activeFeedType,
-                                                 onFeedTypeChange,
-                                                 categories = [],
-                                                 activeCategory = '',
-                                                 onCategorySelect,
-                                                 subcategories = [],
-                                                 allUserPreferences = [],
-                                                 activeSubcategory = null,
-                                                 onSubcategorySelect,
-                                                 activeFilter = 'All',
-                                                 onContentTypeFilterChange,
-                                                 username,
-                                                 profilePictureUrl,
-                                                 onSettingsPress,
-                                                 onLoginPress,
-                                                 onSearch,
-                                                 searchQuery,
-                                                 isLoggedIn,
-                                                 isLoading = false,
-                                                 isSearchLoading = false,
-                                                 scrollY, // Destructure the new prop
-                                               }) => {
+activeFeedType,
+onFeedTypeChange,
+categories = [],
+activeCategory = '',
+onCategorySelect,
+subcategories = [],
+allUserPreferences = [],
+activeSubcategory = null,
+onSubcategorySelect,
+activeFilter = 'All',
+onContentTypeFilterChange,
+username,
+profilePictureUrl,
+onSettingsPress,
+onLoginPress,
+onSearch,
+searchQuery,
+isLoggedIn,
+isLoading = false,
+isSearchLoading = false,
+scrollY, // Destructure the new prop
+}) => {
   const { isDarkTheme } = useContext(UserContext);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [showFilterBar, setShowFilterBar] = useState(false); // For toggling filter bar visibility
@@ -178,7 +179,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
     if (showFilterBar) Keyboard.dismiss(); // Dismiss keyboard if filter bar was open and is now closing
   }, [showFilterBar]);
 
-  const handleSelectFilter = useCallback((filter: string) => {
+  const handleSelectFilter = useCallback((filter: ContentTypeFilterValue) => {
     onContentTypeFilterChange?.(filter);
   }, [onContentTypeFilterChange]);
 
@@ -202,7 +203,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
       outputRange: [1, 0], // Fade out
       extrapolate: 'clamp',
     }),
-    overflow: 'hidden', // Crucial for height animation to work visually
+    overflow: 'hidden' as 'hidden', // FIXED: Explicitly assert type 'hidden'
   };
 
   const filterBarFullRowAnimatedStyle = {
@@ -216,7 +217,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
       outputRange: [1, 0], // Fade out
       extrapolate: 'clamp',
     }),
-    overflow: 'hidden', // Crucial for height animation
+    overflow: 'hidden' as 'hidden', // FIXED: Explicitly assert type 'hidden'
   };
 
   // --- Render Functions for Sub-Components ---
@@ -336,7 +337,7 @@ const HeaderTabs: React.FC<HeaderTabsProps> = ({
   const renderFilterBar = () => {
     // This component is rendered inside an Animated.View that controls the entire row's height (filterBarFullRowAnimatedStyle)
     // The content itself is animated by filterBarToggleAnim for its own open/close effect.
-    const filterOptions = ['All', 'Tweets', 'Articles', 'BlueSky'];
+    const filterOptions: ContentTypeFilterValue[] = ["All", "Tweets", "Articles", "BlueSky"];
     const animatedFilterBarContentStyle = {
       height: filterBarToggleAnim.interpolate({ inputRange: [0, 1], outputRange: [0, FILTER_BAR_ROW_H] }), // Animates from 0 to full filter bar height
       opacity: filterBarToggleAnim, // Fade in/out with height
