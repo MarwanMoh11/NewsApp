@@ -38,7 +38,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 I18nManager.allowRTL(false);
 I18nManager.forceRTL(false);
 
+
+
 // Config (Unchanged)
+type BackendItemTypeFilter = 'all' | 'tweet' | 'article' | 'bluesky';
 const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
 const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
 const redirectUri = makeRedirectUri({ path: 'loginstatus' });
@@ -318,142 +321,175 @@ const Index: React.FC = () => {
     .catch(error => { console.warn("Network error tracking interaction:", error); });
   }, [username, userToken, domaindynamo, userRegion]);
 
-  // Fetch ForYou/Chronological Content (Complete - uses frontend filtering)
-  const fetchContent = useCallback(async (page: number, isPaginating: boolean = false) => {
-    const feedToFetch = activeFeed;
-    if (feedToFetch === 'trending') { return; }
+    const fetchContent = useCallback(async (page: number, isPaginating: boolean = false) => {
+        const feedToFetch = activeFeed;
+        // activeContentTypeFilter is accessed directly from the component's state scope within useCallback
 
-    if (!isPaginating) { cancelOngoingFetch(); }
-    const controller = new AbortController();
-    fetchControllerRef.current = controller;
+        if (feedToFetch === 'trending') { return; }
 
-    if (isPaginating) { setIsLoadingMore(true); }
-    else {
-      setIsContentLoading(true);
-      setContentErrorMessage('');
-      if (page === 1) { setFeedData([]); setDisplayFeedData([]); }
-      setHasMoreData(true);
-    }
-    console.log(`[fetchContent] Fetching Page ${page} for Feed: ${feedToFetch}`);
+        if (!isPaginating) { cancelOngoingFetch(); }
+        const controller = new AbortController();
+        fetchControllerRef.current = controller;
 
-    try {
-      let fetchedItems: any[] = [];
-      let dataLength = 0;
-      let endpoint = '';
-      let bodyPayload = '';
-      let headers: HeadersInit = { 'Content-Type': 'application/json' };
-
-      if (feedToFetch === 'forYou') {
-        if (!username || !userToken) { throw new Error("Log in required"); }
-        endpoint = `${domaindynamo}/get-for-you-feed`;
-        bodyPayload = JSON.stringify({ token: userToken, page: page, limit: PAGE_LIMIT });
-      }
-      else if (feedToFetch === 'chronological') {
-        let categoriesToQuery: string[] = [];
-        if (typeof activeSubcategoryFilter === 'string') categoriesToQuery = [activeSubcategoryFilter];
-        else if (Array.isArray(activeSubcategoryFilter)) categoriesToQuery = activeSubcategoryFilter;
-        else categoriesToQuery = relevantSubcategories;
-
-        if (categoriesToQuery.length === 0 && !searchQuery) {
-             console.log("[fetchContent: Chrono] No relevant categories selected. Fetching nothing.");
-             if (!controller.signal.aborted) {
-                 if (page === 1) { setFeedData([]); setDisplayFeedData([]); }
-                 setHasMoreData(false);
-             }
-             setIsContentLoading(false); setIsLoadingMore(false);
-             return;
+        if (isPaginating) { setIsLoadingMore(true); }
+        else {
+            setIsContentLoading(true);
+            setContentErrorMessage('');
+            if (page === 1) { setFeedData([]); /* setDisplayFeedData([]); // Handled by effect on feedData change */ }
+            setHasMoreData(true);
         }
+        // Updated log to show activeContentTypeFilter when relevant
+        console.log(`[fetchContent] Fetching Page ${page} for Feed: ${feedToFetch}${feedToFetch === 'chronological' ? `, TypeFilter: ${activeContentTypeFilter}` : ''}`);
 
-        endpoint = `${domaindynamo}/get-chronological-feed`;
-        const payloadObject: any = { categories: categoriesToQuery, page, limit: PAGE_LIMIT };
-        if (userRegion) payloadObject.region = userRegion;
-        bodyPayload = JSON.stringify(payloadObject);
-        console.log("[fetchContent: Chrono] Payload sent (no contentType):", bodyPayload);
-      }
-      else { throw new Error("Invalid feed type selected for fetchContent"); }
+        try {
+            let fetchedItems: any[] = [];
+            let dataLength = 0;
+            let endpoint = '';
+            let bodyPayload: string; // Ensure bodyPayload is string for JSON.stringify output
+            let headers: HeadersInit = { 'Content-Type': 'application/json' };
 
-      console.log(`[fetchContent] Making fetch to ${endpoint}`);
-      const response = await fetch(endpoint, { method: 'POST', headers: headers, body: bodyPayload, signal: controller.signal });
-      console.log(`[fetchContent] Response status for ${endpoint}: ${response.status}`);
+            if (feedToFetch === 'forYou') {
+                if (!username || !userToken) { throw new Error("Log in required"); }
+                endpoint = `${domaindynamo}/get-for-you-feed`;
+                const payloadObject = { token: userToken, page: page, limit: PAGE_LIMIT };
+                bodyPayload = JSON.stringify(payloadObject);
+            }
+            else if (feedToFetch === 'chronological') {
+                let categoriesToQuery: string[] = [];
+                if (typeof activeSubcategoryFilter === 'string') categoriesToQuery = [activeSubcategoryFilter];
+                else if (Array.isArray(activeSubcategoryFilter)) categoriesToQuery = activeSubcategoryFilter;
+                else categoriesToQuery = relevantSubcategories;
 
-      if (controller.signal.aborted) { console.log(`[fetchContent] Fetch aborted.`); return; }
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[fetchContent] Error ${response.status} from ${endpoint}:`, errorText);
-        let errorMsg = `HTTP error! status: ${response.status}`;
-        try { const errorData = JSON.parse(errorText); errorMsg = errorData.error || errorData.message || `Server error ${response.status}`; } catch(e) {}
-        if (feedToFetch === 'forYou' && (response.status === 401 || response.status === 403)) { setUserToken(null); errorMsg = "Session expired. Please log in again."; }
-        throw new Error(errorMsg);
-      }
+                // Skip fetch if no categories selected and not a search (search has its own handler)
+                if (categoriesToQuery.length === 0 && !searchQuery) { // searchQuery check from original code
+                    console.log("[fetchContent: Chrono] No relevant categories selected and not a search. Fetching nothing.");
+                    if (!controller.signal.aborted) {
+                        if (page === 1) { setFeedData([]); }
+                        setHasMoreData(false);
+                    }
+                    setIsContentLoading(false); setIsLoadingMore(false);
+                    return;
+                }
 
-      const data = await response.json();
-      console.log(`[fetchContent] Raw data received for ${endpoint}:`, data.status, `(${data?.data?.length || 0} items)`);
+                endpoint = `${domaindynamo}/get-chronological-feed`;
 
-      const dataKey = data.data;
-      const statusKey = data.status;
-      if ((statusKey === 'Content found') && Array.isArray(dataKey)) {
-        fetchedItems = dataKey.map((item: any) => ({
-          type: item.item_type, // 'tweet' or 'article' from backend
-          id: item.item_id,
-          dateTime: item.created_at,
-          author: item.author,
-          text_content: item.text_content,
-          media_url: item.media_url,
-          categories: item.categories,
-          region: item.region,
-          Retweets: item.Retweets,
-          Favorites: item.Favorites,
-          Explanation: item.Explanation,
-        }));
-        dataLength = fetchedItems.length;
-        console.log(`[fetchContent] Processed ${dataLength} raw items.`);
-      } else if (statusKey?.startsWith('No ')) {
-          fetchedItems = []; dataLength = 0;
-          console.log(`[fetchContent] No raw content found status: ${statusKey}`);
-      } else {
-          console.error(`[fetchContent] Unknown backend status/data format: ${statusKey}`, data);
-          throw new Error(data.message || data.error || `Failed to load ${feedToFetch} feed.`);
-      }
+                // Map frontend filter state to backend expected value
+                let backendItemType: string = 'all'; // Use string type here for BackendItemTypeFilter
+                switch (activeContentTypeFilter) {
+                    case 'Tweets': backendItemType = 'tweet'; break;
+                    case 'Articles': backendItemType = 'article'; break;
+                    case 'BlueSky': backendItemType = 'bluesky'; break;
+                    case 'All': // Explicitly handle 'All'
+                    default: backendItemType = 'all'; break;
+                }
 
-      if (!controller.signal.aborted) {
-        console.log(`[fetchContent] Updating RAW feedData state. Page: ${page}, New raw items: ${fetchedItems.length}`);
-        if (page === 1) {
-          setFeedData(fetchedItems);
-        } else {
-          setFeedData(prev => {
-            const existingIds = new Set(prev.map(item => item.id));
-            const newUniqueItems = fetchedItems.filter(item => !existingIds.has(item.id));
-            const combined = [...prev, ...newUniqueItems];
-              return combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
-          });
+                const payloadObject: any = {
+                    categories: categoriesToQuery,
+                    page,
+                    limit: PAGE_LIMIT,
+                    itemTypeFilter: backendItemType, // ADDED THIS LINE
+                };
+                if (userRegion) payloadObject.region = userRegion;
+                bodyPayload = JSON.stringify(payloadObject);
+                console.log("[fetchContent: Chrono] Payload sent:", bodyPayload);
+            }
+            else { throw new Error("Invalid feed type selected for fetchContent"); }
+
+            console.log(`[fetchContent] Making fetch to ${endpoint}`);
+            const response = await fetch(endpoint, { method: 'POST', headers: headers, body: bodyPayload, signal: controller.signal });
+            console.log(`[fetchContent] Response status for ${endpoint}: ${response.status}`);
+
+            if (controller.signal.aborted) { console.log(`[fetchContent] Fetch aborted.`); return; }
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error(`[fetchContent] Error ${response.status} from ${endpoint}:`, errorText);
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try { const errorData = JSON.parse(errorText); errorMsg = errorData.error || errorData.message || `Server error ${response.status}`; } catch(e) {}
+                if (feedToFetch === 'forYou' && (response.status === 401 || response.status === 403)) { setUserToken(null); errorMsg = "Session expired. Please log in again."; }
+                throw new Error(errorMsg);
+            }
+
+            const data = await response.json();
+            console.log(`[fetchContent] Raw data received for ${endpoint}:`, data.status, `(${data?.data?.length || 0} items)`);
+
+            const dataKey = data.data;
+            const statusKey = data.status;
+            if ((statusKey === 'Content found') && Array.isArray(dataKey)) {
+                fetchedItems = dataKey.map((item: any) => ({
+                    type: item.item_type,
+                    id: item.item_id,
+                    dateTime: item.created_at,
+                    author: item.author,
+                    text_content: item.text_content,
+                    media_url: item.media_url,
+                    categories: item.categories,
+                    region: item.region,
+                    Retweets: item.Retweets,
+                    Favorites: item.Favorites,
+                    Explanation: item.Explanation,
+                }));
+                dataLength = fetchedItems.length;
+                console.log(`[fetchContent] Processed ${dataLength} raw items.`);
+            } else if (statusKey?.startsWith('No ')) {
+                fetchedItems = []; dataLength = 0;
+                console.log(`[fetchContent] No raw content found status: ${statusKey}`);
+            } else {
+                console.error(`[fetchContent] Unknown backend status/data format: ${statusKey}`, data);
+                throw new Error(data.message || data.error || `Failed to load ${feedToFetch} feed.`);
+            }
+
+            if (!controller.signal.aborted) {
+                console.log(`[fetchContent] Updating RAW feedData state. Page: ${page}, New raw items: ${fetchedItems.length}`);
+                if (page === 1) {
+                    setFeedData(fetchedItems);
+                } else {
+                    setFeedData(prev => {
+                        const existingIds = new Set(prev.map(item => item.id));
+                        const newUniqueItems = fetchedItems.filter(item => !existingIds.has(item.id));
+                        const combined = [...prev, ...newUniqueItems];
+                        return combined.length > MAX_ITEMS_TO_KEEP ? combined.slice(combined.length - MAX_ITEMS_TO_KEEP) : combined;
+                    });
+                }
+                const potentiallyMore = dataLength >= PAGE_LIMIT;
+                setHasMoreData(potentiallyMore);
+                console.log(`[fetchContent] Setting hasMoreData to: ${potentiallyMore}`);
+            } else { console.log("[fetchContent] State update skipped, fetch aborted."); }
+        } catch (error: any) {
+            if (error.name !== 'AbortError') {
+                console.error(`[FetchContent Error: ${feedToFetch}]`, error);
+                if (!controller.signal?.aborted) {
+                    setContentErrorMessage(error.message || 'Failed to load content.');
+                    if (page === 1) { setFeedData([]); /* setDisplayFeedData([]); // Handled by effect */ }
+                    setHasMoreData(false);
+                }
+            } else { console.log(`[FetchContent: ${feedToFetch}] Aborted.`); }
+        } finally {
+            if (!controller.signal?.aborted) {
+                setIsContentLoading(false);
+                setIsLoadingMore(false);
+            }
+            if (fetchControllerRef.current === controller) { fetchControllerRef.current = null; }
         }
-        const potentiallyMore = dataLength >= PAGE_LIMIT;
-        setHasMoreData(potentiallyMore);
-        console.log(`[fetchContent] Setting hasMoreData to: ${potentiallyMore}`);
-      } else { console.log("[fetchContent] State update skipped, fetch aborted."); }
-    } catch (error: any) {
-      if (error.name !== 'AbortError') {
-        console.error(`[FetchContent Error: ${feedToFetch}]`, error);
-        if (!controller.signal?.aborted) {
-          setContentErrorMessage(error.message || 'Failed to load content.');
-          if (page === 1) { setFeedData([]); setDisplayFeedData([]); }
-          setHasMoreData(false);
-        }
-      } else { console.log(`[FetchContent: ${feedToFetch}] Aborted.`); }
-    } finally {
-      if (!controller.signal?.aborted) {
-        setIsContentLoading(false);
-        setIsLoadingMore(false);
-      }
-      if (fetchControllerRef.current === controller) { fetchControllerRef.current = null; }
-    }
-  }, [
-    activeFeed, domaindynamo, username, userToken, userRegion, PAGE_LIMIT,
-    MAX_ITEMS_TO_KEEP, selectedMainCategory, activeSubcategoryFilter,
-    relevantSubcategories, searchQuery, cancelOngoingFetch, setUserToken
-  ]);
+    }, [
+        activeFeed,
+        activeContentTypeFilter, // ADDED: activeContentTypeFilter as a dependency
+        domaindynamo,
+        username,
+        userToken,
+        userRegion,
+        PAGE_LIMIT,
+        MAX_ITEMS_TO_KEEP,
+        selectedMainCategory,
+        activeSubcategoryFilter,
+        relevantSubcategories,
+        searchQuery,
+        cancelOngoingFetch,
+        setUserToken
+        // Note: State setters like setFeedData, setIsLoadingMore, etc., don't need to be in deps.
+        // relevantSubcategories and selectedMainCategory are included as they affect categoriesToQuery logic.
+    ]);
 
-    // Fetch Trending Content (Complete - populates feedData)
+// Fetch Trending Content (This function remains unchanged as it doesn't use itemTypeFilter)
     const fetchTrendingContent = useCallback(async (page: number, isPaginating: boolean = false) => {
         const feedToFetch = 'trending';
         if (activeFeed !== feedToFetch) { return; }
@@ -465,7 +501,7 @@ const Index: React.FC = () => {
         else {
             setIsContentLoading(true);
             setContentErrorMessage('');
-            if (page === 1) { setFeedData([]); setDisplayFeedData([]); }
+            if (page === 1) { setFeedData([]); /* setDisplayFeedData([]); // Handled by effect */ }
             setHasMoreData(true);
         }
         console.log(`[fetchTrending] Fetching Page ${page}`);
@@ -491,7 +527,7 @@ const Index: React.FC = () => {
             let dataLength = 0;
             if (data.status === 'Success' && Array.isArray(data.data)) {
                 fetchedItems = data.data.map((item: any) => ({
-                    type: 'tweet',
+                    type: 'tweet', // Trending content is assumed to be tweets based on original mapping
                     id: item.Tweet_Link,
                     dateTime: item.Created_At || item.created_at,
                     author: item.Username,
@@ -533,7 +569,7 @@ const Index: React.FC = () => {
                 console.error(`[fetchTrending Error]`, error);
                 if (!controller.signal?.aborted) {
                     setContentErrorMessage(error.message || 'Failed to load trending content.');
-                    if (page === 1) { setFeedData([]); setDisplayFeedData([]); }
+                    if (page === 1) { setFeedData([]); /* setDisplayFeedData([]); // Handled by effect */ }
                     setHasMoreData(false);
                 }
             } else { console.log(`[fetchTrending] Aborted.`); }
@@ -544,7 +580,16 @@ const Index: React.FC = () => {
             }
             if (fetchControllerRef.current === controller) { fetchControllerRef.current = null; }
         }
-    }, [ activeFeed, domaindynamo, userRegion, PAGE_LIMIT, MAX_ITEMS_TO_KEEP, cancelOngoingFetch ]);
+    }, [
+        activeFeed, // activeFeed is still needed to gate execution
+        domaindynamo,
+        userRegion,
+        PAGE_LIMIT,
+        MAX_ITEMS_TO_KEEP,
+        cancelOngoingFetch
+        // Other state variables like username, userToken are not used by trending
+    ]);
+
 
 
 
@@ -712,111 +757,86 @@ const Index: React.FC = () => {
 
 
   // *** Effect for Frontend Filtering (Display Logic) ***
-  useEffect(() => {
-    console.log(`[Filtering Effect] Running. Filter: ${activeContentTypeFilter}, Raw data length: ${feedData.length}`);
-    let newlyFilteredData = [];
-    if (activeFeed === 'chronological') {
-        if (activeContentTypeFilter === 'All') {
-            newlyFilteredData = feedData;
-        } else if (activeContentTypeFilter === 'Tweets') {
-            newlyFilteredData = feedData.filter(item => item.type === 'tweet');
-        } else if (activeContentTypeFilter === 'Articles') {
-            newlyFilteredData = feedData.filter(item => item.type === 'article');
-        } else if (activeContentTypeFilter === 'BlueSky') {
-            newlyFilteredData = feedData.filter(item => item.type === 'bluesky');
-        } else {
-             newlyFilteredData = feedData;
-        }
-    } else {
-        newlyFilteredData = feedData;
-    }
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setDisplayFeedData(newlyFilteredData);
-  }, [feedData, activeContentTypeFilter, activeFeed]);
+    // Inside Index.tsx
+
+// *** Effect for Frontend Filtering (Display Logic) ***
+    useEffect(() => {
+        console.log(`[Display Logic Effect] Updating displayFeedData. ActiveFeed: ${activeFeed}, feedData length: ${feedData.length}`);
+        // For chronological feed, if a specific type filter is active,
+        // the backend has already filtered. If 'All' is active, backend sends all types.
+        // In both these scenarios for chronological, feedData is what we want to display.
+        // For other feeds ('forYou', 'trending'), we also display feedData directly
+        // as no frontend type filtering is currently applied to them.
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setDisplayFeedData(feedData);
+    }, [feedData, activeFeed]); // activeContentTypeFilter is removed from dependencies here,
+    // as its change now triggers a full refetch of feedData
+    // which will already be correctly filtered by the backend.
 
 
   // Replace the existing main data fetch useEffect with this one
 
     // --- Main Data Fetch Trigger Effect (Corrected Sync Logic) ---
+    // Inside Index.tsx
+
+// --- Main Data Fetch Trigger Effect (Corrected Sync Logic) ---
     useEffect(() => {
-      // *** Log dependencies at the start ***
-      console.log(`[Effect Trigger - Deps Check] Path: ${pathname}, params.feed: ${params.feed}, activeFeed: ${activeFeed}, pageLoading: ${pageLoading}, username: ${username ? 'Exists' : 'Null'}, selectedMainCategory: ${selectedMainCategory}, activeSubcategoryFilter: ${activeSubcategoryFilter}, searchQuery: ${searchQuery}`);
+        // *** Log dependencies at the start ***
+        console.log(`[Effect Trigger - Deps Check] Path: ${pathname}, params.feed: ${params.feed}, activeFeed: ${activeFeed}, pageLoading: ${pageLoading}, username: ${username ? 'Exists' : 'Null'}, selectedMainCategory: ${selectedMainCategory}, activeSubcategoryFilter: ${activeSubcategoryFilter}, activeContentTypeFilter: ${activeContentTypeFilter}, searchQuery: ${searchQuery}`); // Added activeContentTypeFilter to log
 
-      // Determine target feed from route params (only 'forYou' or 'trending')
-      const requestedFeedParam = params.feed;
-      let paramTargetFeed: 'forYou' | 'trending' = 'forYou'; // Default for '/'
-      if (requestedFeedParam === 'trending') {
-          paramTargetFeed = 'trending';
-      }
-      console.log(`[Effect Trigger] Determined targetFeed from params: ${paramTargetFeed}`);
-
-      // Sync internal state ONLY IF:
-      // 1. We are on the home route ('/') where params primarily dictate ForYou/Trending state.
-      // 2. The target derived from params ('forYou' or 'trending') is different from the current state.
-      // 3. AND the current state is NOT 'chronological' (because 'chronological' is set locally via HeaderTabs, not params).
-      if (pathname === '/' && paramTargetFeed !== activeFeed && activeFeed !== 'chronological') {
-          console.log(`[Effect Trigger] SYNCING internal state (${activeFeed}) with param target (${paramTargetFeed}) because path is '/' and current state is not 'chronological'.`);
-          setActiveFeed(paramTargetFeed); // Update state to match param ('forYou' or 'trending')
-          return; // Exit this run; the effect will re-run with the updated activeFeed state.
-      }
-
-      // If we reach here, activeFeed is either:
-      // - Already matching the relevant param target ('forYou' or 'trending' when path is '/')
-      // - Set to 'chronological' (by handleFeedChange)
-      // - Or not on the '/' route (currently this component likely only renders on '/')
-      console.log(`[Effect Trigger] State is sync'd or 'chronological'. Proceeding with activeFeed: ${activeFeed}`);
-
-      // --- Proceed with fetch logic ---
-
-      // Conditions to SKIP fetching (using the now-correct activeFeed)
-      if (pageLoading || (activeFeed === 'forYou' && !username)) {
-        console.log(`[Effect Trigger] Skipping fetch: pageLoading=${pageLoading}, activeFeed=${activeFeed}, username=${username ? 'Exists' : 'None'}`);
-         // Avoid clearing data if just briefly pageLoading during initial load/sync
-        if (!pageLoading && (activeFeed === 'forYou' && !username)) {
-            // Clear data if specifically skipping because user isn't logged in for 'For You'
-             if (feedData.length > 0) setFeedData([]);
-             if (displayFeedData.length > 0) setDisplayFeedData([]);
+        // ... (your existing logic for paramTargetFeed and setActiveFeed) ...
+        const requestedFeedParam = params.feed;
+        let paramTargetFeed: 'forYou' | 'trending' = 'forYou';
+        if (requestedFeedParam === 'trending') {
+            paramTargetFeed = 'trending';
         }
-        setIsContentLoading(false);
-        setIsSearchLoading(false);
-        return;
-      }
+        if (pathname === '/' && paramTargetFeed !== activeFeed && activeFeed !== 'chronological') {
+            setActiveFeed(paramTargetFeed);
+            return;
+        }
 
-      // Fetching Logic (uses the now-correct `activeFeed` state)
-      console.log(`[Effect Trigger] Conditions met, fetching page 1 for feed: ${activeFeed}, query: '${searchQuery}'`);
-      setCurrentPage(1);
-      setHasMoreData(true); // Assume more data initially for a new fetch trigger
+        console.log(`[Effect Trigger] State is sync'd or 'chronological'. Proceeding with activeFeed: ${activeFeed}`);
 
-      const trimmedQuery = searchQuery.trim();
-      if (activeFeed === 'chronological' && trimmedQuery !== '') {
-          console.log('[Effect Trigger] Calling handleSearchQuery');
-          handleSearchQuery(trimmedQuery, 1, false);
-      } else if (activeFeed === 'trending') {
-          console.log('[Effect Trigger] Calling fetchTrendingContent');
-          fetchTrendingContent(1, false);
-      } else if (activeFeed === 'forYou' || activeFeed === 'chronological') { // Chronological with no search falls here
-          console.log('[Effect Trigger] Calling fetchContent');
-          fetchContent(1, false);
-      } else {
-          console.warn("[Effect Trigger] Unhandled feed type:", activeFeed);
-      }
+        if (pageLoading || (activeFeed === 'forYou' && !username)) {
+            console.log(`[Effect Trigger] Skipping fetch: pageLoading=${pageLoading}, activeFeed=${activeFeed}, username=${username ? 'Exists' : 'None'}`);
+            if (!pageLoading && (activeFeed === 'forYou' && !username)) {
+                if (feedData.length > 0) setFeedData([]);
+            }
+            setIsContentLoading(false);
+            setIsSearchLoading(false);
+            return;
+        }
+
+        console.log(`[Effect Trigger] Conditions met, fetching page 1 for feed: ${activeFeed}, query: '${searchQuery}', typeFilter: ${activeFeed === 'chronological' ? activeContentTypeFilter : 'N/A'}`);
+        setCurrentPage(1);
+        setHasMoreData(true);
+
+        const trimmedQuery = searchQuery.trim();
+        if (activeFeed === 'chronological' && trimmedQuery !== '') {
+            handleSearchQuery(trimmedQuery, 1, false);
+        } else if (activeFeed === 'trending') {
+            fetchTrendingContent(1, false);
+        } else if (activeFeed === 'forYou' || activeFeed === 'chronological') {
+            // Chronological with no search & now with type filter falls here
+            fetchContent(1, false);
+        } else {
+            console.warn("[Effect Trigger] Unhandled feed type:", activeFeed);
+        }
 
     }, [
-      // Dependencies
-      pathname, // Need pathname to know if param logic applies
-      params.feed, // React to param changes
-      activeFeed, // React to internal state changes
-      pageLoading, // React when loading finishes
-      username, // React when username appears (for 'For You')
-      // Filters that trigger refetch for the *current* feed
-      selectedMainCategory,
-      activeSubcategoryFilter,
-      searchQuery,
-      // Fetch functions (stable callbacks - include to satisfy eslint)
-      fetchContent,
-      handleSearchQuery,
-      fetchTrendingContent
-    ]); // Make sure ALL dependencies are listed
+        pathname,
+        params.feed,
+        activeFeed,
+        pageLoading,
+        username,
+        selectedMainCategory,
+        activeSubcategoryFilter,
+        activeContentTypeFilter, // <-- ADD activeContentTypeFilter HERE
+        searchQuery,
+        fetchContent,           // fetchContent now depends on activeContentTypeFilter too
+        handleSearchQuery,
+        fetchTrendingContent
+    ]);
 
   // --- Callback Handlers ---
 
@@ -1235,3 +1255,4 @@ const getStyles = (isDarkTheme: boolean) => {
 
 // --- Error Boundary (Complete) ---
 // --- Final Export ---
+export default Index;
