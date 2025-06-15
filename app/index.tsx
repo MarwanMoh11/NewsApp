@@ -311,7 +311,7 @@ const Index: React.FC = () => {
   }, []);
 
   // Interaction Tracking (Complete)
-  const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article', interactionType: string) => {
+  const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article' | 'bluesky' | 'unknown', interactionType: string) => {
     if (!username || !userToken) return;
     const finalItemId = String(itemId);
     const payload = { username, itemId: finalItemId, itemType, interactionType, region: userRegion || undefined };
@@ -410,7 +410,7 @@ const Index: React.FC = () => {
             }
 
             const data = await response.json();
-            console.log(`[fetchContent] Raw data received for ${endpoint}:`, data.status, `(${data?.data?.length || 0} items)`);
+            console.log('[DEBUG] Raw data from backend (first item):', data.data && data.data.length > 0 ? data.data[0] : 'No data');
 
             const dataKey = data.data;
             const statusKey = data.status;

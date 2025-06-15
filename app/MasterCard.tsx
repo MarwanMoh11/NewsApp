@@ -22,7 +22,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // --- Define the Props Interface (Matching Index.tsx feedData items) ---
-interface MasterItem {
+ export interface MasterItem {
   // Add 'bluesky' to the possible types
   type: 'tweet' | 'article' | 'bluesky' | 'unknown'; // MODIFIED: Added 'bluesky'
   id: string | number; // Consistent ID (Tweet_Link, Article ID, or Bluesky URI)

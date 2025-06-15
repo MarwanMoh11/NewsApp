@@ -56,7 +56,7 @@ interface UserProfileData {
 interface RepostItem {
     reposted_by_username?: string;
     reposted_at: string;
-    content_type: 'tweet' | 'article';
+    content_type: 'tweet' | 'article' | 'bluesky' | 'unknown';
     original_content: any;
 }
 type RepostViewMode = 'my' | 'friends';

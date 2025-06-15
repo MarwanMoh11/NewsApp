@@ -38,7 +38,7 @@ const REPOST_PAGE_LIMIT = 10;
 
 // --- Interfaces ---
 interface UserProfileData { username: string; fullName: string | null; profilePictureUrl: string | null; bio: string | null; }
-interface RepostItem { reposted_at: string; content_type: 'tweet' | 'article'; original_content: any; }
+interface RepostItem { reposted_at: string; content_type: 'tweet' | 'article' | 'bluesky' | 'unknown'; original_content: any; }
 type FriendStatus = 'friends' | 'request_sent' | 'request_received' | 'not_friends' | 'loading' | 'self' | 'error' | 'logged_out';
 
 // --- Defaults & Sizing / Helpers ---

@@ -271,7 +271,7 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
         }, [username, /* showInAppMessage (if used for self-tap) */]);
 
   // --- Interaction Tracking ---
-    const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article', interactionType: string) => {
+    const trackInteraction = useCallback((itemId: string | number, itemType: 'tweet' | 'article' | 'bluesky' | 'unknown', interactionType: string) => {
       // Don't track if not logged in (username state might be 'Guest' or empty initially)
       if (!username || username === 'Guest' || !userToken) {
           // console.log("Interaction tracking skipped: User not logged in or username not set.");

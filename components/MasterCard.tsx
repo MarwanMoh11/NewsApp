@@ -22,9 +22,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // --- Define the Props Interface (Matching Index.tsx feedData items) ---
-interface MasterItem {
+export interface MasterItem {
     // Core fields created in fetchContent
-    type: 'tweet' | 'article' | 'unknown'; // Type determined by frontend logic
+    type: 'tweet' | 'article' | 'bluesky' | 'unknown'; // Type determined by frontend logic
     id: string | number; // Consistent ID (Tweet_Link or Article ID)
     dateTime?: string | null; // Consistent date/time field
 
@@ -96,6 +96,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
         showMoreText: isDarkTheme ? '#c7c7c7' : '#505050',
         twitterColor: '#1DA1F2', // Twitter blue
         articleColor: isDarkTheme ? '#AAAAAA' : '#777777', // Neutral color for newspaper
+        blueskyColor: '#007AFF', // Bluesky blue
     };
 
     // Extract properties using the MasterCardProps['item'] structure
@@ -141,9 +142,13 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
     }, []);
 
     // --- Icon Selection ---
-    const TypeIcon = type === 'tweet'
-        ? <Icon name="logo-twitter" size={16} color={colors.twitterColor} style={styles.typeIcon} />
-        : <Icon name="newspaper-outline" size={16} color={colors.articleColor} style={styles.typeIcon} />;
+    let TypeIcon = <Icon name="newspaper-outline" size={16} color={colors.articleColor} style={styles.typeIcon} />; // Default to article
+    if (type === 'tweet') {
+        TypeIcon = <Icon name="logo-twitter" size={16} color={colors.twitterColor} style={styles.typeIcon} />;
+    } else if (type === 'bluesky') {
+        // Use a placeholder icon from Ionicons. Replace with custom Image/SVG for better branding.
+        TypeIcon = <Icon name="cloud-outline" size={16} color={colors.blueskyColor} style={styles.typeIcon} />;
+    }
 
 
     // @ts-ignore
@@ -153,7 +158,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
             onPress={handlePress}
             activeOpacity={0.8}
             accessible={true}
-            accessibilityLabel={`${type === 'tweet' ? 'Tweet' : 'Article'} from ${author}. ${text_content.substring(0, 50)}...`}
+            accessibilityLabel={`${type === 'tweet' ? 'Tweet' : type === 'bluesky' ? 'Bluesky Post' : 'Article'} from ${author}. ${text_content.substring(0, 50)}...`}
             accessibilityRole="button"
         >
             {/* Header: Author/Source, Time, and Type Icon */}
@@ -163,7 +168,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
                         <Text style={[styles.authorText, { color: colors.authorText }]} numberOfLines={1}>
                             {author}
                         </Text>
-                        {type === 'tweet' && IsVerified && (
+                        {(type === 'tweet' || type === 'bluesky') && IsVerified && (
                             <Icon name="checkmark-circle" size={15} color={colors.accent} style={styles.verifiedBadge} />
                         )}
                     </View>
@@ -206,7 +211,7 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
                             onLoadEnd={handleImageLoadEnd} // Only need end usually
                             onError={handleImageError}
                             accessible={true}
-                            accessibilityLabel={type === 'tweet' ? "Image attached to tweet" : "Article lead image"}
+                            accessibilityLabel={type === 'tweet' ? "Image attached to tweet" : type === 'bluesky' ? "Image attached to Bluesky post" : "Article lead image"}
                         />
                     ) : null }
                     {imageLoading && !imageError && imageAspectRatio && ( // Show loader only while loading AND aspect ratio is known
@@ -216,15 +221,15 @@ const MasterCard: React.FC<MasterCardProps> = ({ item, onPress }) => {
                     )}
                     {imageError && (
                         <View style={[styles.mediaImage, { aspectRatio: 16/9, backgroundColor: colors.imagePlaceholder }, styles.placeholderOverlay]}>
-                            <Icon name={type === 'tweet' ? "cloud-offline-outline" : "image-outline"} size={40} color={colors.errorIcon} />
+                            <Icon name={(type === 'tweet' || type === 'bluesky') ? "cloud-offline-outline" : "image-outline"} size={40} color={colors.errorIcon} />
                         </View>
                     )}
                 </View>
             )}
 
 
-            {/* Footer for Tweet Engagements */}
-            {type === 'tweet' && (Retweets != null || Favorites != null) && (
+            {/* Footer for Tweet/Bluesky Engagements */}
+            {(type === 'tweet' || type === 'bluesky') && (Retweets != null || Favorites != null) && (
                 <View style={[styles.footerContainer, { borderTopColor: colors.separator }]}>
                     {Retweets != null && Retweets > 0 && (
                         <Text style={[styles.engagementText, { color: colors.textSecondary }]}>
