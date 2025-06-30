@@ -2854,6 +2854,53 @@ router.post('/get-similar_users_searched', (req, res) => {
   });
 });
 
+/**
+ * @route   POST /is-tweet-saved
+ * @desc    Check if a tweet has already been saved by the user
+ * @access  Private (requires token)
+ */
+router.post('/is-tweet-saved', (req, res) => {
+    const { token, tweet_link } = req.body;
+
+    // 1. Validate input
+    if (!token || !tweet_link) {
+        return res.status(400).json({ status: 'Error', message: 'Token and tweet_link are required.' });
+    }
+
+    // 2. Verify token and get username
+    const userPayload = verifyUserData(token);
+    if (!userPayload) {
+        return res.status(401).json({ status: 'Error', message: 'Invalid or expired token' });
+    }
+    const username = userPayload.username;
+
+    // 3. Formulate the database query to check for existence
+    // We use COUNT(*) as it's more efficient than selecting all columns.
+    // Make sure your table is named `Saved_Tweets` or change it here.
+    const checkQuery = `
+    SELECT COUNT(*) AS savedCount FROM Saved_Tweets WHERE username = ? AND tweet_link = ?;
+  `;
+
+    // 4. Execute the query
+    pool.query(checkQuery, [username, tweet_link], (err, results) => {
+        if (err) {
+            console.error('Database error checking saved tweet:', err);
+            return res.status(500).json({ status: 'Error', message: 'Database query failed.' });
+        }
+
+        // 5. Process the result and send response
+        // results will be an array like [{ savedCount: 1 }] or [{ savedCount: 0 }]
+        const count = results[0].savedCount;
+        const tweetIsSaved = count > 0; // This converts the count (0 or 1) to a boolean (false or true)
+
+        // This response format matches exactly what the frontend expects
+        return res.status(200).json({
+            status: 'Success',
+            isSaved: tweetIsSaved
+        });
+    });
+});
+
 router.post('/save-articles', (req, res) => {
   const { token, article_id } = req.body;
 
