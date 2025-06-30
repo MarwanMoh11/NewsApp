@@ -2953,7 +2953,7 @@ router.post('/save-tweets', (req, res) => {
   });
 });
 
-router.delete('/unsave-tweet', (req, res) => {
+router.post('/unsave-tweet', (req, res) => {
     const { token, tweet_link } = req.body;
 
     // 1. Validate input
