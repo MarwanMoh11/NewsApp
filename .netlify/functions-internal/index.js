@@ -2734,6 +2734,78 @@ router.post('/share_articles', (req, res) => {
     return res.status(200).json({ status: 'Success', message: 'Article successfully shared.' });
   });
 });
+/**
+ * @route   POST /is-tweet-reposted
+ * @desc    Check if a tweet has already been reposted (shared) by the user
+ * @access  Private (requires token)
+ */
+router.post('/is-tweet-reposted', (req, res) => {
+    const { token, tweet_link } = req.body;
+
+    if (!token || !tweet_link) {
+        return res.status(400).json({ status: 'Error', message: 'Token and tweet_link are required.' });
+    }
+
+    const userPayload = verifyUserData(token);
+    if (!userPayload) {
+        return res.status(401).json({ status: 'Error', message: 'Invalid or expired token' });
+    }
+    const username = userPayload.username;
+
+    // Make sure your table is named `shared_tweets` or change it here.
+    const checkQuery = `
+    SELECT COUNT(*) AS repostCount FROM shared_tweets WHERE username = ? AND tweet_link = ?;
+  `;
+
+    pool.query(checkQuery, [username, tweet_link], (err, results) => {
+        if (err) {
+            console.error('Database error checking reposted tweet:', err);
+            return res.status(500).json({ status: 'Error', message: 'Database query failed.' });
+        }
+
+        const count = results[0].repostCount;
+        const tweetIsReposted = count > 0;
+
+        // This response format matches what the frontend will expect
+        return res.status(200).json({
+            status: 'Success',
+            isReposted: tweetIsReposted
+        });
+    });
+});
+
+
+/**
+ * @route   POST /unrepost-tweet
+ * @desc    Remove a reposted (shared) tweet from a user's list
+ * @access  Private (requires token)
+ */
+router.post('/unrepost-tweet', (req, res) => {
+    const { token, tweet_link } = req.body;
+
+    if (!token || !tweet_link) {
+        return res.status(400).json({ status: 'Error', message: 'Token and tweet_link are required.' });
+    }
+
+    const userPayload = verifyUserData(token);
+    if (!userPayload) {
+        return res.status(401).json({ status: 'Error', message: 'Invalid or expired token' });
+    }
+    const username = userPayload.username;
+
+    const unrepostQuery = `
+    DELETE FROM shared_tweets WHERE username = ? AND tweet_link = ?;
+  `;
+
+    pool.query(unrepostQuery, [username, tweet_link], (err, result) => {
+        if (err) {
+            console.error('Database error unreposting tweet:', err);
+            return res.status(500).json({ status: 'Error', message: 'Database query failed.' });
+        }
+
+        return res.status(200).json({ status: 'Success', message: 'Tweet successfully unreposted.' });
+    });
+});
 
 router.post('/share_tweets', (req, res) => {
   const { token, tweet_link } = req.body;

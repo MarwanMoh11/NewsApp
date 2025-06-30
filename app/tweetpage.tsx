@@ -190,6 +190,8 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   const [messageType, setMessageType] = useState<'info' | 'error' | 'success'>('info');
   const [isSaved, setIsSaved] = useState(false);
   const [isCheckingSaveStatus, setIsCheckingSaveStatus] = useState(false);
+    const [isReposted, setIsReposted] = useState(false);
+    const [isCheckingRepostStatus, setIsCheckingRepostStatus] = useState(false);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const isKeyboardVisible = useKeyboardVisible();
@@ -345,6 +347,8 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
       setMessageType('info');
       setIsSaved(false);
       setIsCheckingSaveStatus(false);
+        setIsReposted(false);
+        setIsCheckingRepostStatus(false);
     }
 
     // Fetch data when modal becomes visible with a valid link and token
@@ -415,7 +419,8 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
             console.log('[TweetModal] tweetData loaded, fetching comments, explanation, author PFP, and save status.');
             fetchComments(tweetData.Tweet_Link);
             generateExplanation(tweetData.Tweet_Link);
-            checkIfTweetIsSaved(tweetData.Tweet_Link); // <--- ADD THIS LINE
+            checkIfTweetIsSaved(tweetData.Tweet_Link);
+            checkIfTweetIsReposted(tweetData.Tweet_Link);
             if (tweetData.Username) {
                 fetchProfilePicture(tweetData.Username, true); // Fetch tweet author PFP
             }
@@ -533,6 +538,30 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
             console.error('Error checking save status:', error);
         } finally {
             setIsCheckingSaveStatus(false);
+        }
+    };
+
+    const checkIfTweetIsReposted = async (link: string) => {
+        if (!userToken || !link) return;
+        setIsCheckingRepostStatus(true);
+        try {
+            const response = await fetch(`${domaindynamo}/is-tweet-reposted`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: userToken, tweet_link: link }),
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'Success') {
+                setIsReposted(data.isReposted);
+            } else {
+                setIsReposted(false); // Default to not reposted if check fails
+                console.warn('Could not check repost status:', data.message || 'Request failed');
+            }
+        } catch (error) {
+            setIsReposted(false);
+            console.error('Error checking repost status:', error);
+        } finally {
+            setIsCheckingRepostStatus(false);
         }
     };
 
@@ -661,34 +690,45 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   };
 
   // --- Action Handlers (Preserved Backend Interaction, Added Loading/Feedback) ---
-  const handleShare = async (tweetLink: string | undefined) => {
-    if (!tweetLink) return;
-    if (!userToken) {
-      showInAppMessage('Login required to share.', 'info');
-      return;
-    }
-    setIsSharing(true);
-    try {
-      // Keep original fetch logic
-      const response = await fetch(`${domaindynamo}/share_tweets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'Success') {
-        showInAppMessage('Tweet shared successfully!', 'success');
-        trackInteraction(tweetLink, 'tweet', 'share'); // Track the 'share' interaction
-      } else {
-         showInAppMessage(data.message || 'Unable to share tweet.', 'error');
-      }
-    } catch (error: any) {
-      console.error('Error sharing tweet', error);
-      showInAppMessage(`Error sharing tweet: ${error.message || 'Network error'}`, 'error');
-    } finally {
-        setIsSharing(false);
-    }
-  };
+    // --- Renamed from handleShare to handleRepost ---
+    const handleToggleRepost = async (tweetLink: string | undefined) => {
+        if (!tweetLink) return;
+        if (!userToken) {
+            showInAppMessage('Login required to repost.', 'info');
+            return;
+        }
+        // We'll use the 'isSharing' state for the loading spinner to avoid creating another one
+        setIsSharing(true);
+
+        // Determine endpoint and messages based on current repost state
+        const endpoint = isReposted ? `${domaindynamo}/unrepost-tweet` : `${domaindynamo}/share_tweets`;
+        const successMessage = isReposted ? 'Repost removed' : 'Tweet reposted!';
+        const interaction = isReposted ? 'unrepost' : 'repost';
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
+            });
+            const data = await response.json();
+
+            if (response.ok && data.status === 'Success') {
+                showInAppMessage(successMessage, 'success');
+                setIsReposted(!isReposted); // Toggle the reposted state
+                trackInteraction(tweetLink, 'tweet', interaction); // Track the interaction
+            } else {
+                const errorMessage = isReposted ? 'Could not remove repost.' : 'Could not repost tweet.';
+                showInAppMessage(data.message || errorMessage, 'error');
+            }
+        } catch (error: any) {
+            const errorMessage = isReposted ? 'Error removing repost' : 'Error reposting tweet';
+            console.error(errorMessage, error);
+            showInAppMessage(`${errorMessage}: ${error.message || 'Network error'}`, 'error');
+        } finally {
+            setIsSharing(false); // End loading state
+        }
+    };
 
     const handleToggleSave = async (tweetLink: string | undefined) => {
         if (!tweetLink) return;
@@ -926,15 +966,21 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.actionButton}
-                                    onPress={() => handleShare(tweetData.Tweet_Link)}
-                                    disabled={isSaving || isSharing}
+                                    onPress={() => handleToggleRepost(tweetData.Tweet_Link)}
+                                    disabled={isSaving || isSharing || isCheckingRepostStatus}
                                 >
-                                     {isSharing ? (
+                                    {isSharing || isCheckingRepostStatus ? (
                                         <ActivityIndicator size="small" color={currentTheme.accent} />
                                     ) : (
-                                        <Icon name="share-outline" size={24} color={currentTheme.accent} />
+                                        <Icon
+                                            name={isReposted ? "repeat" : "repeat-outline"}
+                                            size={24}
+                                            color={isReposted ? currentTheme.success : currentTheme.accent}
+                                        />
                                     )}
-                                    <Text style={[styles.actionButtonText, { color: currentTheme.accent }]}>Share</Text>
+                                    <Text style={[styles.actionButtonText, { color: isReposted ? currentTheme.success : currentTheme.accent }]}>
+                                        {isReposted ? "Reposted" : "Repost"}
+                                    </Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
