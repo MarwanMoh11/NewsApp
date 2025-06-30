@@ -275,15 +275,36 @@ router.get('/test-jwks', (req, res) => {
     });
 });
 // --- END TEMPORARY TEST ROUTE ---
-
+// --- MODIFIED HELPER with extensive logging ---
 async function urlToGoogleGenerativeAIPart(url, mimeType) {
     try {
-        console.log(`Fetching image from URL: ${url}`);
-        const response = await axios.get(url, { responseType: 'arraybuffer' });
-        const imageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+        console.log(`[Image Helper] Attempting to fetch image from URL: ${url}`);
 
-        // Use the MIME type from the response header if available, otherwise use the provided one
+        const response = await axios.get(url, {
+            responseType: 'arraybuffer',
+            // Add a user-agent header to mimic a browser, which can help bypass simple blocks
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
+        });
+
+        // --- LOGGING ---
+        console.log(`[Image Helper] Axios response status: ${response.status}`);
+        console.log(`[Image Helper] Axios response headers['content-type']: ${response.headers['content-type']}`);
+        console.log(`[Image Helper] Downloaded data length: ${response.data.length} bytes`);
+
+        if (response.data.length === 0) {
+            console.error("[Image Helper] Downloaded data is empty. Aborting.");
+            return null;
+        }
+
+        const imageBase64 = Buffer.from(response.data, 'binary').toString('base64');
         const finalMimeType = response.headers['content-type'] || mimeType;
+        console.log(`[Image Helper] Successfully encoded to base64. Final MIME Type: ${finalMimeType}`);
+
+        // Check if the content-type is something that is not an image (like a webpage)
+        if (finalMimeType.includes('text/html')) {
+            console.error(`[Image Helper] ERROR: The URL returned a webpage, not an image. The URL is likely incorrect.`);
+            return null;
+        }
 
         return {
             inlineData: {
@@ -292,34 +313,26 @@ async function urlToGoogleGenerativeAIPart(url, mimeType) {
             },
         };
     } catch (error) {
-        console.error(`Failed to fetch or process image from ${url}:`, error.message);
-        // Return null or throw an error so the caller can handle it
+        console.error(`[Image Helper] FAILED to fetch or process image from ${url}. Status: ${error.response?.status}. Error: ${error.message}`);
         return null;
     }
 }
 
-// -----------------------------------------------------------
-//  EXPLAIN_ARTICLE ROUTE (Promise-based, NO streaming)
-// -----------------------------------------------------------
+// --- MODIFIED /explain_tweet ROUTE with extensive logging ---
 router.post('/explain_tweet', async (req, res) => {
     try {
         const { tweetlink } = req.body;
-        if (!tweetlink) {
-            return res.status(400).json({ status: 'Error', message: "Missing 'tweetlink' in request body." });
-        }
+        if (!tweetlink) { return res.status(400).json({ status: 'Error', message: "Missing 'tweetlink' in request body." });}
 
         console.log(`[Gemini Explain] Received request for tweet: ${tweetlink}`);
 
-        // 1) Fetch tweet data (same as before)
+        // 1) Fetch tweet data
         const selectQuery = `SELECT Explanation, Tweet, Media_URL FROM Tweets WHERE Tweet_Link = ? LIMIT 1;`;
         const [results] = await poolPromise.query(selectQuery, [tweetlink]);
-
-        if (results.length === 0) {
-            return res.status(404).json({ status: 'Error', message: 'Tweet not found.' });
-        }
+        if (results.length === 0) { return res.status(404).json({ status: 'Error', message: 'Tweet not found.' });}
         const tweetData = results[0];
 
-        // If explanation already exists, return it
+        // If explanation exists, return it
         if (tweetData.Explanation) {
             console.log('[Gemini Explain] Returning existing explanation.');
             return res.status(200).json({ status: 'Success', explanation: tweetData.Explanation });
@@ -331,29 +344,32 @@ router.post('/explain_tweet', async (req, res) => {
             return res.status(500).json({ status: 'Error', message: 'AI service is not configured.' });
         }
 
-        // Initialize Google AI Client
         const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        // Prepare the prompt parts (text and potentially an image)
         const textPrompt = `You are a social media assistant. Explain the following tweet in a professional, article-friendly way. If an image is provided, ensure your explanation incorporates what is shown in the image. Do not add unrelated content. Start your response straight away. Here is the tweet text: "${tweetData.Tweet}"`;
 
         const promptParts = [textPrompt];
         let imagePart = null;
 
-        // If a media URL exists, fetch it and add it to the prompt
+        // --- LOGGING ---
+        console.log(`[Gemini Explain] Tweet Media_URL from DB is: ${tweetData.Media_URL}`);
+
         if (tweetData.Media_URL) {
-            // Assuming common image types. You might want more robust MIME type detection.
             imagePart = await urlToGoogleGenerativeAIPart(tweetData.Media_URL, 'image/jpeg');
+
+            // --- LOGGING ---
             if (imagePart) {
                 promptParts.push(imagePart);
-                console.log('[Gemini Explain] Image part successfully created and added to prompt.');
+                console.log('[Gemini Explain] Image part was successfully created and added to the prompt.');
             } else {
-                console.warn('[Gemini Explain] Could not process image. Proceeding with text-only explanation.');
+                console.warn('[Gemini Explain] Image part is NULL. Proceeding with text-only explanation.');
             }
         }
 
-        // Generate content using the multimodal prompt
+        // --- LOGGING ---
+        console.log(`[Gemini Explain] Final promptParts array contains ${promptParts.length} element(s).`);
+
         const result = await model.generateContent({ contents: [{ role: "user", parts: promptParts }] });
         const response = result.response;
         const explanation = response.text().trim();
@@ -363,13 +379,9 @@ router.post('/explain_tweet', async (req, res) => {
             return res.status(500).json({ status: 'Error', message: 'No valid explanation generated.' });
         }
 
-        // --- 3) Update DB with new explanation (same as before) ---
+        // --- 3) Update DB & Return (unchanged) ---
         const updateQuery = `UPDATE Tweets SET Explanation = ? WHERE Tweet_Link = ?;`;
-        console.log('[Gemini Explain] Updating database with new explanation.');
         await poolPromise.query(updateQuery, [explanation, tweetlink]);
-
-        // 4) Return success
-        console.log('[Gemini Explain] Returning generated explanation.');
         return res.status(200).json({ status: 'Success', explanation });
 
     } catch (error) {
