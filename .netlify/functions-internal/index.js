@@ -1,6 +1,7 @@
 // index.js
 require('dotenv').config();
 const axios = require('axios');
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -275,147 +276,105 @@ router.get('/test-jwks', (req, res) => {
 });
 // --- END TEMPORARY TEST ROUTE ---
 
+async function urlToGoogleGenerativeAIPart(url, mimeType) {
+    try {
+        console.log(`Fetching image from URL: ${url}`);
+        const response = await axios.get(url, { responseType: 'arraybuffer' });
+        const imageBase64 = Buffer.from(response.data, 'binary').toString('base64');
+
+        // Use the MIME type from the response header if available, otherwise use the provided one
+        const finalMimeType = response.headers['content-type'] || mimeType;
+
+        return {
+            inlineData: {
+                data: imageBase64,
+                mimeType: finalMimeType,
+            },
+        };
+    } catch (error) {
+        console.error(`Failed to fetch or process image from ${url}:`, error.message);
+        // Return null or throw an error so the caller can handle it
+        return null;
+    }
+}
+
 // -----------------------------------------------------------
 //  EXPLAIN_ARTICLE ROUTE (Promise-based, NO streaming)
 // -----------------------------------------------------------
-router.post('/explain_article', async (req, res) => {
+router.post('/explain_tweet', async (req, res) => {
     try {
-        const { article_id } = req.body;
-        if (!article_id) {
-            console.error('[Error] Missing article_id in request body.');
-            return res
-                .status(400)
-                .json({ status: 'Error', message: "Missing 'article_id' in request body." });
+        const { tweetlink } = req.body;
+        if (!tweetlink) {
+            return res.status(400).json({ status: 'Error', message: "Missing 'tweetlink' in request body." });
         }
 
-        console.log(`Received request to explain article ID: ${article_id}`);
+        console.log(`[Gemini Explain] Received request for tweet: ${tweetlink}`);
 
-        // 1) Check if the article already has an explanation
-        const selectQuery = `
-            SELECT headline, short_description, Explanation, image_url
-            FROM Articles
-            WHERE id = ?
-                LIMIT 1;
-        `;
-        console.log('Executing SELECT query to check existing explanation.');
+        // 1) Fetch tweet data (same as before)
+        const selectQuery = `SELECT Explanation, Tweet, Media_URL FROM Tweets WHERE Tweet_Link = ? LIMIT 1;`;
+        const [results] = await poolPromise.query(selectQuery, [tweetlink]);
 
-        // Ensure poolPromise is correctly initialized and handles connections
-        const [results] = await poolPromise.query(selectQuery, [article_id]);
+        if (results.length === 0) {
+            return res.status(404).json({ status: 'Error', message: 'Tweet not found.' });
+        }
+        const tweetData = results[0];
 
-        if (!results || results.length === 0) { // Check if results array exists and is not empty
-            console.warn(`[Warning] Article not found for ID: ${article_id}`);
-            return res.status(404).json({ status: 'Error', message: 'Article not found.' });
+        // If explanation already exists, return it
+        if (tweetData.Explanation) {
+            console.log('[Gemini Explain] Returning existing explanation.');
+            return res.status(200).json({ status: 'Success', explanation: tweetData.Explanation });
         }
 
-        const articleData = results[0];
-        // Check if the Explanation property exists and is not null/empty
-        const existingExplanation = articleData.Explanation;
-        console.log(
-            `Article found. Explanation exists: ${existingExplanation ? 'Yes' : 'No'}`
-        );
-
-        // If explanation already exists and is not empty, return it
-        if (existingExplanation) {
-            console.log('Returning existing explanation.');
-            return res
-                .status(200)
-                .json({ status: 'Success', explanation: existingExplanation });
+        // --- 2) Generate new explanation with Gemini ---
+        if (!process.env.GOOGLE_API_KEY) {
+            console.error('[Gemini Explain] GOOGLE_API_KEY is not set.');
+            return res.status(500).json({ status: 'Error', message: 'AI service is not configured.' });
         }
 
-        // 2) Generate a new explanation using Groq (non-streaming)
-        // Ensure GROQ_API_KEY is available in environment variables
-        if (!process.env.GROQ_API_KEY) {
-            console.error('[Error] GROQ_API_KEY environment variable not set.');
-            return res.status(500).json({ status: 'Error', message: 'AI configuration error.' });
-        }
-        console.log('Initializing Groq client.');
-        const groq_client = new Groq({
-            apiKey: process.env.GROQ_API_KEY,
-        });
+        // Initialize Google AI Client
+        const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        const selectedModel = 'llama3-8b-8192';
-        const descriptionToExplain = articleData.short_description || articleData.headline || 'No description provided.'; // Use headline as fallback
-        console.log(`Creating chat completion with Groq model ${selectedModel}. Content to explain length: ${descriptionToExplain.length}`);
+        // Prepare the prompt parts (text and potentially an image)
+        const textPrompt = `You are a social media assistant. Explain the following tweet in a professional, article-friendly way. If an image is provided, ensure your explanation incorporates what is shown in the image. Do not add unrelated content. Start your response straight away. Here is the tweet text: "${tweetData.Tweet}"`;
 
-        // Create a content string that includes image information if available
-        let userContent = descriptionToExplain;
-        if (articleData.image_url) {
-            userContent = `This content has an associated image at URL: ${articleData.image_url}\n\nContent to explain: ${descriptionToExplain}`;
-        }
+        const promptParts = [textPrompt];
+        let imagePart = null;
 
-        let completionResponse;
-        try {
-            completionResponse = await groq_client.chat.completions.create({
-                model: selectedModel,
-                messages: [
-                    {
-                        role: 'system',
-                        content:
-                            'You are a helpful assistant. Explain the following piece of text clearly. If there is an image mentioned, include it in your explanation context. Start off your response with the explanation straight away', // Refined prompt with image instruction
-                    },
-                    {
-                        role: 'user',
-                        content: userContent,
-                    },
-                ],
-                temperature: 0.5, // Adjusted temperature slightly
-                max_tokens: 150, // Reduced max tokens for concise explanation
-                top_p: 1,
-                stop: null,
-            });
-            console.log('Groq completion successful.');
-        } catch (groqError) {
-            console.error('Error calling Groq API:', groqError);
-            return res
-                .status(500)
-                .json({ status: 'Error', message: 'Failed to get explanation from AI service.' });
+        // If a media URL exists, fetch it and add it to the prompt
+        if (tweetData.Media_URL) {
+            // Assuming common image types. You might want more robust MIME type detection.
+            imagePart = await urlToGoogleGenerativeAIPart(tweetData.Media_URL, 'image/jpeg');
+            if (imagePart) {
+                promptParts.push(imagePart);
+                console.log('[Gemini Explain] Image part successfully created and added to prompt.');
+            } else {
+                console.warn('[Gemini Explain] Could not process image. Proceeding with text-only explanation.');
+            }
         }
 
-        // 3) Extract the explanation from the Groq response
-        console.log('Parsing explanation from Groq response.');
-        const explanation = completionResponse?.choices?.[0]?.message?.content?.trim() || '';
+        // Generate content using the multimodal prompt
+        const result = await model.generateContent({ contents: [{ role: "user", parts: promptParts }] });
+        const response = result.response;
+        const explanation = response.text().trim();
 
         if (!explanation) {
-            console.error('[Error] No explanation content returned by Groq.');
-            return res
-                .status(500)
-                .json({ status: 'Error', message: 'AI service did not generate an explanation.' });
-        }
-        console.log(`Generated explanation length: ${explanation.length}`);
-
-        // 4) Update DB with new explanation
-        const updateQuery = `
-            UPDATE Articles
-            SET Explanation = ?
-            WHERE id = ?;
-        `;
-        console.log('Updating the database with the new explanation.');
-
-        try {
-            const [updateResult] = await poolPromise.query(updateQuery, [explanation, article_id]);
-            // Check if the update actually affected a row
-            if (updateResult.affectedRows > 0) {
-                console.log(`Database update successful. Rows affected: ${updateResult.affectedRows}`);
-            } else {
-                console.warn(`Database update seemed successful but no rows were affected for article ID: ${article_id}. Explanation might not be saved.`);
-                // Decide if this should be an error or just a warning
-            }
-        } catch (updateErr) {
-            console.error('Database error while updating explanation:', updateErr);
-            // Don't necessarily fail the whole request if DB update fails, could still return the generated explanation
-            // return res.status(500).json({ status: 'Error', message: 'Error saving explanation in DB.' });
-            console.warn(`Failed to save generated explanation to DB for article ID: ${article_id}. Returning explanation anyway.`);
+            console.error('[Gemini Explain] No explanation returned by the model.');
+            return res.status(500).json({ status: 'Error', message: 'No valid explanation generated.' });
         }
 
-        // 5) Return success with explanation (even if DB update failed, maybe?)
-        console.log('Returning the generated explanation to the client.');
+        // --- 3) Update DB with new explanation (same as before) ---
+        const updateQuery = `UPDATE Tweets SET Explanation = ? WHERE Tweet_Link = ?;`;
+        console.log('[Gemini Explain] Updating database with new explanation.');
+        await poolPromise.query(updateQuery, [explanation, tweetlink]);
+
+        // 4) Return success
+        console.log('[Gemini Explain] Returning generated explanation.');
         return res.status(200).json({ status: 'Success', explanation });
 
     } catch (error) {
-        console.error('Unexpected error in /explain_article route:', error);
-        return res
-            .status(500)
-            .json({ status: 'Error', message: 'Internal Server Error' });
+        console.error('Unexpected error in /explain_tweet route:', error);
+        return res.status(500).json({ status: 'Error', message: 'Internal Server Error', details: error.message });
     }
 });
 
