@@ -2906,6 +2906,61 @@ router.post('/save-tweets', (req, res) => {
   });
 });
 
+router.delete('/unsave-tweet', (req, res) => {
+    const { token, tweet_link } = req.body;
+
+    // 1. Validate input
+    if (!token || !tweet_link) {
+        return res.status(400).json({
+            status: 'Error',
+            message: 'Token and tweet_link are required.'
+        });
+    }
+
+    // 2. Authenticate the user
+    const userPayload = verifyUserData(token);
+    if (!userPayload) {
+        return res.status(401).json({
+            status: 'Error',
+            message: 'Invalid or expired token.'
+        });
+    }
+
+    const username = userPayload.username;
+
+    // 3. Construct and execute the DELETE query
+    const unsaveTweetQuery = `
+    DELETE FROM Saved_Tweets
+    WHERE username = ? AND tweet_link = ?;
+  `;
+
+    pool.query(unsaveTweetQuery, [username, tweet_link], (err, result) => {
+        if (err) {
+            console.error("Database error during unsave:", err);
+            return res.status(500).json({
+                status: 'Error',
+                message: 'An internal server error occurred.',
+                error: err.message
+            });
+        }
+
+        // 4. Check if a row was actually deleted
+        if (result.affectedRows === 0) {
+            return res.status(404).json({
+                status: 'Error',
+                message: 'Tweet not found in your saved list or already unsaved.'
+            });
+        }
+
+        // 5. Respond with success
+        return res.status(200).json({
+            status: 'Success',
+            message: 'Tweet successfully unsaved.'
+        });
+    });
+});
+
+
 router.post('/show-saved', (req, res) => {
   const { username } = req.body;
   if (!username) {

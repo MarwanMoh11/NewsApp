@@ -188,6 +188,8 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
   const [messageVisible, setMessageVisible] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [messageType, setMessageType] = useState<'info' | 'error' | 'success'>('info');
+  const [isSaved, setIsSaved] = useState(false);
+  const [isCheckingSaveStatus, setIsCheckingSaveStatus] = useState(false);
 
   const scrollViewRef = useRef<ScrollView>(null);
   const isKeyboardVisible = useKeyboardVisible();
@@ -341,6 +343,8 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
       setMessageVisible(false);
       setMessageText('');
       setMessageType('info');
+      setIsSaved(false);
+      setIsCheckingSaveStatus(false);
     }
 
     // Fetch data when modal becomes visible with a valid link and token
@@ -405,20 +409,22 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
       }, [tweetData?.Media_URL]);
 
   // Fetch comments, explanation, and author PFP after tweetData is loaded
-  useEffect(() => {
-    if (tweetData?.Tweet_Link) {
-        console.log('[TweetModal] tweetData loaded, fetching comments, explanation, author PFP.');
-        fetchComments(tweetData.Tweet_Link);
-        generateExplanation(tweetData.Tweet_Link);
-        if (tweetData.Username) {
-             fetchProfilePicture(tweetData.Username, true); // Fetch tweet author PFP
+    // Fetch comments, explanation, author PFP, and SAVE STATUS after tweetData is loaded
+    useEffect(() => {
+        if (tweetData?.Tweet_Link) {
+            console.log('[TweetModal] tweetData loaded, fetching comments, explanation, author PFP, and save status.');
+            fetchComments(tweetData.Tweet_Link);
+            generateExplanation(tweetData.Tweet_Link);
+            checkIfTweetIsSaved(tweetData.Tweet_Link); // <--- ADD THIS LINE
+            if (tweetData.Username) {
+                fetchProfilePicture(tweetData.Username, true); // Fetch tweet author PFP
+            }
         }
-    }
-     if (tweetData?.Media_URL) {
-         setIsImageLoading(true); // Start image loading state
-         setImageError(false); // Reset image error state
-     }
-  }, [tweetData]); // Run when tweetData changes
+        if (tweetData?.Media_URL) {
+            setIsImageLoading(true); // Start image loading state
+            setImageError(false); // Reset image error state
+        }
+    }, [tweetData]); // Run when tweetData changes
 
   // --- Fetching Logic (Preserved Backend Interaction) ---
   const fetchUsername = async () => {
@@ -503,6 +509,32 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
         setIsTweetLoading(false);
     }
   };
+
+    const checkIfTweetIsSaved = async (link: string) => {
+        if (!userToken || !link) return;
+        setIsCheckingSaveStatus(true);
+        try {
+            // NOTE: This assumes you have a backend endpoint at `/is-tweet-saved`
+            // that accepts a token and tweet_link and returns { status: 'Success', isSaved: boolean }
+            const response = await fetch(`${domaindynamo}/is-tweet-saved`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: userToken, tweet_link: link }),
+            });
+            const data = await response.json();
+            if (response.ok && data.status === 'Success') {
+                setIsSaved(data.isSaved);
+            } else {
+                setIsSaved(false); // Default to not saved if check fails
+                console.warn('Could not check save status:', data.message || 'Request failed');
+            }
+        } catch (error) {
+            setIsSaved(false);
+            console.error('Error checking save status:', error);
+        } finally {
+            setIsCheckingSaveStatus(false);
+        }
+    };
 
   const fetchComments = async (link: string) => {
     // Keep original logic, wrap with loading state
@@ -658,34 +690,43 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
     }
   };
 
-  const handleSave = async (tweetLink: string | undefined) => {
-     if (!tweetLink) return;
-    if (!userToken) {
-       showInAppMessage('Login required to save.', 'info');
-      return;
-    }
-    setIsSaving(true);
-    try {
-       // Keep original fetch logic
-      const response = await fetch(`${domaindynamo}/save-tweets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
-      });
-      const data = await response.json();
-      if (response.ok && data.status === 'Success') {
-        showInAppMessage('Tweet saved successfully!', 'success');
-         trackInteraction(tweetLink, 'tweet', 'save'); // Track the 'save' interaction
-      } else {
-         showInAppMessage(data.message || 'Tweet could not be saved.', 'error');
-      }
-    } catch (error: any) {
-      console.error('Error saving tweet', error);
-      showInAppMessage(`Error saving tweet: ${error.message || 'Network error'}`, 'error');
-    } finally {
-        setIsSaving(false);
-    }
-  };
+    const handleToggleSave = async (tweetLink: string | undefined) => {
+        if (!tweetLink) return;
+        if (!userToken) {
+            showInAppMessage('Login required to save.', 'info');
+            return;
+        }
+        setIsSaving(true);
+
+        // Determine endpoint and messages based on current save state
+        const endpoint = isSaved ? `${domaindynamo}/unsave-tweet` : `${domaindynamo}/save-tweets`;
+        const successMessage = isSaved ? 'Tweet unsaved' : 'Tweet saved!';
+        const interaction = isSaved ? 'unsave' : 'save';
+
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: userToken, tweet_link: tweetLink }),
+            });
+            const data = await response.json();
+
+            if (response.ok && data.status === 'Success') {
+                showInAppMessage(successMessage, 'success');
+                setIsSaved(!isSaved); // Toggle the saved state
+                trackInteraction(tweetLink, 'tweet', interaction); // Track the interaction
+            } else {
+                const errorMessage = isSaved ? 'Could not unsave tweet.' : 'Could not save tweet.';
+                showInAppMessage(data.message || errorMessage, 'error');
+            }
+        } catch (error: any) {
+            const errorMessage = isSaved ? 'Error unsaving tweet' : 'Error saving tweet';
+            console.error(errorMessage, error);
+            showInAppMessage(`${errorMessage}: ${error.message || 'Network error'}`, 'error');
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
   const postComment = async (content: string) => {
      // Keep original logic, wrap with loading/feedback
@@ -871,15 +912,17 @@ const TweetModal: React.FC<TweetModalProps> = ({ visible, onClose, tweetLink }) 
                             <View style={[styles.actionsContainer, { borderTopColor: currentTheme.borderColor }]}>
                                 <TouchableOpacity
                                     style={styles.actionButton}
-                                    onPress={() => handleSave(tweetData.Tweet_Link)}
-                                    disabled={isSaving || isSharing}
+                                    onPress={() => handleToggleSave(tweetData.Tweet_Link)}
+                                    disabled={isSaving || isSharing || isCheckingSaveStatus}
                                 >
-                                    {isSaving ? (
+                                    {isSaving || isCheckingSaveStatus ? (
                                         <ActivityIndicator size="small" color={currentTheme.accent} />
                                     ) : (
-                                        <Icon name="bookmark-outline" size={24} color={currentTheme.accent} />
+                                        <Icon name={isSaved ? "bookmark" : "bookmark-outline"} size={24} color={currentTheme.accent} />
                                     )}
-                                    <Text style={[styles.actionButtonText, { color: currentTheme.accent }]}>Save</Text>
+                                    <Text style={[styles.actionButtonText, { color: currentTheme.accent }]}>
+                                        {isSaved ? "Saved" : "Save"}
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={styles.actionButton}
@@ -1330,5 +1373,8 @@ const styles = StyleSheet.create({
     marginLeft: 42,
      // color set inline
   },
+    commentHeaderTouchable: {
+        alignSelf: 'flex-start',
+    },
 
 });
