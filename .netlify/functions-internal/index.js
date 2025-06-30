@@ -1719,13 +1719,7 @@ router.get('/get-region', (req, res) => {
   });
 });
 
-**
-* @route POST /process-login
-* @description A single endpoint to handle user registration or login.
-* It checks if a user exists by their Auth0 token. If not, it creates them.
-* In both cases, it returns the application's custom JWT.
-* @access Public (receives Auth0 user data)
-*/
+
 router.post('/process-login', async (req, res) => {
     const { auth_token, nickname, email, full_name, profile_picture } = req.body;
 
