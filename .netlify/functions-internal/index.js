@@ -1,5 +1,6 @@
 // index.js
 require('dotenv').config();
+const axios = require('axios');
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -78,6 +79,8 @@ function verifyUserData(token) {
   }
 }
 
+
+
 // ----------------------------------------------
 //   MYSQL POOL (PROMISE-BASED & CALLBACK STYLE)
 // ----------------------------------------------
@@ -104,6 +107,21 @@ app.get('/test', (req, res) => {
 router.get('/test', (req, res) => {
   res.json({ message: 'CORS is working!' });
 });
+
+const getManagementApiToken = async () => {
+    try {
+        const response = await axios.post(`https://${process.env.AUTH0_MGMNT_DOMAIN}/oauth/token`, {
+            client_id: process.env.AUTH0_MGMNT_CLIENT_ID,
+            client_secret: process.env.AUTH0_MGMNT_CLIENT_SECRET,
+            audience: `https://${process.env.AUTH0_MGMNT_DOMAIN}/api/v2/`,
+            grant_type: 'client_credentials'
+        });
+        return response.data.access_token;
+    } catch (error) {
+        console.error('Error getting Auth0 Management API token:', error.response?.data || error.message);
+        throw new Error('Could not authenticate with Management API.');
+    }
+};
 
 // -----------------------------------------------------------
 //  EXPLAIN_TWEET ROUTE (Promise-based, NO streaming)
@@ -1832,23 +1850,77 @@ router.post('/set-region', (req, res) => {
   });
 });
 
-router.post('/delete-user', (req, res) => {
-  const { username } = req.body;
-  const query = `
-      DELETE FROM Users_new
-      WHERE username = ?;
-  `;
-  pool.query(query, [username], (err, results) => {
-      if (err) {
-          return res.status(500).json({ status: 'Error', message: 'Internal server error' });
-      }
+router.post('/delete-user', async (req, res) => {
+    const { username } = req.body;
 
-      if (results.affectedRows > 0) {
-          return res.json({ status: 'Success', message: `User ${username} has been deleted.` });
-      } else {
-          return res.status(404).json({ status: 'Error', message: `User ${username} not found.` });
-      }
-  });
+    if (!username) {
+        return res.status(400).json({ status: 'Error', message: 'Username is required.' });
+    }
+
+    try {
+        // --- Step 1: Find the user in your database to get their Auth0 ID ---
+        console.log(`[Delete] Looking up Auth0 ID for username: ${username}`);
+        const selectQuery = 'SELECT auth_token FROM Users_new WHERE username = ? LIMIT 1';
+        const [users] = await poolPromise.query(selectQuery, [username]);
+
+        if (users.length === 0) {
+            console.warn(`[Delete] User '${username}' not found in local DB.`);
+            return res.status(404).json({ status: 'Error', message: `User '${username}' not found.` });
+        }
+        const auth0UserId = users[0].auth_token;
+        if (!auth0UserId) {
+            console.error(`[Delete] User '${username}' exists but has no Auth0 ID (auth_token) in the database.`);
+            return res.status(500).json({ status: 'Error', message: 'User record is incomplete, cannot delete from Auth0.' });
+        }
+        console.log(`[Delete] Found Auth0 ID: ${auth0UserId}`);
+
+
+        // --- Step 2: Get a Management API token ---
+        console.log(`[Delete] Getting Management API token...`);
+        const mgmtToken = await getManagementApiToken();
+        if (!mgmtToken) {
+            // The helper function will throw, but as a safeguard:
+            return res.status(500).json({ status: 'Error', message: 'Failed to get management token.' });
+        }
+        console.log(`[Delete] Management API token acquired.`);
+
+
+        // --- Step 3: Delete the user from Auth0 ---
+        console.log(`[Delete] Deleting user from Auth0: ${auth0UserId}`);
+        await axios.delete(`https://${process.env.AUTH0_MGMNT_DOMAIN}/api/v2/users/${auth0UserId}`, {
+            headers: {
+                'Authorization': `Bearer ${mgmtToken}`
+            }
+        });
+        console.log(`[Delete] Successfully deleted user from Auth0.`);
+
+
+        // --- Step 4: Delete the user from your local database ---
+        // This only runs if the Auth0 deletion was successful.
+        console.log(`[Delete] Deleting user from local database: ${username}`);
+        const deleteQuery = 'DELETE FROM Users_new WHERE username = ?';
+        const [deleteResult] = await poolPromise.query(deleteQuery, [username]);
+
+        if (deleteResult.affectedRows > 0) {
+            console.log(`[Delete] Successfully deleted user from local database.`);
+            return res.json({ status: 'Success', message: `User ${username} has been deleted from all systems.` });
+        } else {
+            // This is an inconsistent state, should be logged.
+            console.error(`[Delete] CRITICAL: User deleted from Auth0 but failed to delete from local DB. Username: ${username}`);
+            return res.status(500).json({ status: 'Error', message: 'User deleted from authentication provider, but failed to clear from local database. Please contact support.' });
+        }
+
+    } catch (error) {
+        console.error('Error during account deletion process:', error.response?.data || error.message);
+        // Provide a user-friendly error
+        let errorMessage = 'An unexpected error occurred during account deletion.';
+        if (error.response?.status === 404) {
+            errorMessage = 'User not found on the authentication server. The account may have already been deleted.';
+        } else if (error.response?.status === 401 || error.response?.status === 403) {
+            errorMessage = 'Server is not authorized to perform this action. Please check configuration.';
+        }
+        return res.status(500).json({ status: 'Error', message: errorMessage });
+    }
 });
 
 router.post('/get-article-by-id', (req, res) => {
