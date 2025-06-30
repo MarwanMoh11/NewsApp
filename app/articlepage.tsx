@@ -23,7 +23,13 @@ import { UserContext } from '../app/UserContext'; // Adjust path if necessary
 import InAppMessage from '../components/ui/InAppMessage'; // Use InAppMessage
 
 // --- Configuration ---
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+import Constants from 'expo-constants';
+
+// --- Environment Variable Validation ---
+const domaindynamo = Constants.expoConfig?.extra?.API_URL as string;
+if (!domaindynamo) {
+    throw new Error("Required environment variable API_URL is not set.");
+}
 const { width, height } = Dimensions.get('window');
 
 // --- Responsive Sizing (Keep from Redesign) ---

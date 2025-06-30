@@ -21,6 +21,7 @@ import {FlashList} from "@shopify/flash-list";
 import {useLocalSearchParams, usePathname, useRouter} from 'expo-router';
 import {makeRedirectUri, Prompt, useAuthRequest} from 'expo-auth-session';
 import Icon from 'react-native-vector-icons/Ionicons';
+import Constants from 'expo-constants';
 
 // Import Contexts and Components (ADJUST PATHS AS NEEDED)
 import {UserContext} from '@/app/UserContext';
@@ -42,10 +43,19 @@ I18nManager.forceRTL(false);
 
 // Config (Unchanged)
 type BackendItemTypeFilter = 'all' | 'tweet' | 'article' | 'bluesky';
-const domain = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
-const clientId = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
+const { extra } = Constants.expoConfig ?? {};
+if (!extra) {
+    throw new Error("App config `extra` is not defined. Please check your app.config.js.");
+}
+
+const domain = extra.AUTH0_DOMAIN as string;
+const clientId = extra.AUTH0_CLIENT_ID as string;
+const domaindynamo = extra.API_URL as string;
+
+if (!domain || !clientId || !domaindynamo) {
+    throw new Error("One or more required environment variables (AUTH0_DOMAIN, AUTH0_CLIENT_ID, API_URL) are not set in your .env file or app.config.js.");
+}
 const redirectUri = makeRedirectUri({ path: 'loginstatus' });
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
 const PAGE_LIMIT = 15;
 const MAX_ITEMS_TO_KEEP = 150;
 const ESTIMATED_ITEM_HEIGHT = 300;

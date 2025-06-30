@@ -1,4 +1,5 @@
 // index.js
+require('dotenv').config();
 const express = require('express');
 const mysql = require('mysql2');
 const cors = require('cors');
@@ -10,8 +11,9 @@ const serverless = require('serverless-http');
 const { expressjwt: jwtMiddleware } = require('express-jwt'); // Renamed to avoid conflict
 const jwksRsa = require('jwks-rsa');
 // --- END NEW IMPORTS ---
-const AUTH0_DOMAIN = 'dev-1uzu6bsvrd2mj3og.us.auth0.com'; // Your Auth0 domain
-const AUTH0_AUDIENCE = 'chronically-backend-api'; // **REPLACE THIS** with your Auth0 API Identifier (Audience)
+const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
+const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE;
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // ----------------------------------------------
 //   CONFIGURATION (NO ENV VARIABLES)
@@ -19,7 +21,6 @@ const AUTH0_AUDIENCE = 'chronically-backend-api'; // **REPLACE THIS** with your 
 const app = express();
 const router = express.Router();
 
-const JWT_SECRET = 'your_jwt_secret_here'; // In production, store securely
 const GROQ_API_KEY = process.env.GROQ_API_KEY; // Your Groq API Key
 
 // ----------------------------------------------
@@ -81,14 +82,14 @@ function verifyUserData(token) {
 //   MYSQL POOL (PROMISE-BASED & CALLBACK STYLE)
 // ----------------------------------------------
 const pool = mysql.createPool({
-  host: 'monorail.proxy.rlwy.net',
-  user: 'root',
-  password: 'gDUjVJApPCahWwbpByGdbtjDSsLsRrTn',
-  database: 'chronically',
-  port: 55952,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    port: process.env.DB_PORT, // Use the port from your .env
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
 });
 
 // For the `/explain_tweet` route, we need promise-based queries:

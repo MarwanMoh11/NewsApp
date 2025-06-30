@@ -43,7 +43,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // --- Constants & Interfaces ---
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+import Constants from 'expo-constants';
+
+// --- Environment Variable Validation ---
+const domaindynamo = Constants.expoConfig?.extra?.API_URL as string;
+if (!domaindynamo) {
+    throw new Error("Required environment variable API_URL is not set.");
+}
 const { width, height: screenHeight } = Dimensions.get('window');
 const REPOST_PAGE_LIMIT = 10;
 

@@ -19,7 +19,13 @@ import { UserContext } from '../app/UserContext'; // Adjust the path as needed
 import InAppMessage from '../components/ui/InAppMessage'; // Keep InAppMessage import
 
 // --- Configuration ---
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+import Constants from 'expo-constants';
+
+// --- Environment Variable Validation ---
+const domaindynamo = Constants.expoConfig?.extra?.API_URL as string;
+if (!domaindynamo) {
+    throw new Error("Required environment variable API_URL is not set.");
+}
 const { width } = Dimensions.get('window');
 const DEFAULT_REGION = 'US'; // Define a default region
 

@@ -23,11 +23,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons'; // Use consistent import
 import WebCamera from '../components/WebCamera'; // Adjust path if necessary
 import BackButton from '../components/ui/BackButton'; // Adjust path if necessary
+import Constants from 'expo-constants';
 
 // Configuration
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
-const CLOUDINARY_URL = 'https://api.cloudinary.com/v1_1/davi2jx4z/image/upload';
-const CLOUDINARY_UPLOAD_PRESET = 'unsigned_preset';
+const { extra } = Constants.expoConfig ?? {};
+if (!extra) {
+  throw new Error("App config `extra` is not defined. Please check app.config.js.");
+}
+const domaindynamo = extra.API_URL as string;
+const CLOUDINARY_URL = extra.CLOUDINARY_URL as string;
+const CLOUDINARY_UPLOAD_PRESET = extra.CLOUDINARY_UPLOAD_PRESET as string;
+if (!domaindynamo || !CLOUDINARY_URL || !CLOUDINARY_UPLOAD_PRESET) {
+  throw new Error("Required environment variables (API_URL, CLOUDINARY_URL, CLOUDINARY_UPLOAD_PRESET) are not set.");
+}
 const defaultProfilePic = require('../assets/images/logo.png'); // Default image
 
 export default function ProfileSettings() {

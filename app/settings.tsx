@@ -22,7 +22,13 @@ import InAppMessage from '../components/ui/InAppMessage';
 import ConfirmationModal from '../components/ui/ConfirmationModal'; // Import the custom modal
 
 // Configuration
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+import Constants from 'expo-constants';
+
+// --- Environment Variable Validation ---
+const domaindynamo = Constants.expoConfig?.extra?.API_URL as string;
+if (!domaindynamo) {
+  throw new Error("Required environment variable API_URL is not set.");
+}
 const defaultProfilePic = require('../assets/images/logo.png');
 
 // SettingsScreen Component

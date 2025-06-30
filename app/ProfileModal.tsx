@@ -32,7 +32,13 @@ const ArticleModal = React.lazy(() => import('./articlepage')); // Adjust path
 const TweetModal = React.lazy(() => import('./tweetpage'));   // Adjust path
 
 // --- Configuration & Setup ---
-const domaindynamo = 'https://chronically.netlify.app/.netlify/functions/index';
+import Constants from 'expo-constants';
+
+// --- Environment Variable Validation ---
+const domaindynamo = Constants.expoConfig?.extra?.API_URL as string;
+if (!domaindynamo) {
+    throw new Error("Required environment variable API_URL is not set.");
+}
 const { width } = Dimensions.get('window');
 const REPOST_PAGE_LIMIT = 10;
 

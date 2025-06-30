@@ -18,11 +18,19 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { UserContext } from '../app/UserContext'; // Adjust path if needed
 import { makeRedirectUri } from 'expo-auth-session';
+import Constants from 'expo-constants';
 
 // --- Configuration ---
-const AUTH0_DOMAIN = 'dev-1uzu6bsvrd2mj3og.us.auth0.com';
-const AUTH0_CLIENT_ID = 'CZHJxAwp7QDLyavDaTLRzoy9yLKea4A1';
-const API_BASE_URL = 'https://chronically.netlify.app/.netlify/functions/index';
+const { extra } = Constants.expoConfig ?? {};
+if (!extra) {
+    throw new Error("App config `extra` is not defined. Please check app.config.js.");
+}
+const AUTH0_DOMAIN = extra.AUTH0_DOMAIN as string;
+const AUTH0_CLIENT_ID = extra.AUTH0_CLIENT_ID as string;
+const API_BASE_URL = extra.API_URL as string;
+if (!AUTH0_DOMAIN || !AUTH0_CLIENT_ID || !API_BASE_URL) {
+    throw new Error("Required environment variables (AUTH0_DOMAIN, AUTH0_CLIENT_ID, API_URL) are not set.");
+}
 const REDIRECT_PATH = 'loginstatus'; // The path used in redirects
 
 // --- Types ---
