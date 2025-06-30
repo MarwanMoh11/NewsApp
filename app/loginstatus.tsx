@@ -277,132 +277,78 @@ const LoginStatus: React.FC = () => {
 
 
   // --- Step 3: Handle Backend Registration / Login / Activation ---
-  const handleUserRegistrationOrLogin = async (user: Auth0User) => {
-    const regStartTime = Date.now();
-    console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Starting...`);
-    const Nickname = user.nickname || user.name?.split(' ')[0] || 'User';
-    const Email = user.email;
-    const FullName = user.name;
-    const ProfilePicture = user.picture;
-    const Auth0Token = user.sub; // Use Auth0 Subject ID
+    const handleUserRegistrationOrLogin = async (user: Auth0User) => {
+        const regStartTime = Date.now();
+        console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Starting...`);
+        const Nickname = user.nickname || user.name?.split(' ')[0] || 'User';
+        const Email = user.email;
+        const FullName = user.name;
+        const ProfilePicture = user.picture;
+        const Auth0Token = user.sub;
 
-    // ** IMPORTANT: This function now contains detailed logging before/after backend calls **
-    // ** The error "Body not allowed for GET/HEAD" indicates a problem with the *backend* function handling.**
-    // ** Examine the backend code for the endpoint identified by the logs below. **
-    try {
-      // 1. Register or check user existence
-      console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Calling POST ${API_BASE_URL}/sign-up...`);
-      const checkResponse = await fetch(`${API_BASE_URL}/sign-up`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          auth_token: Auth0Token,
-          nickname: Nickname,
-          email: Email,
-          full_name: FullName,
-          profile_picture: ProfilePicture,
-        }),
-      });
-      console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /sign-up responded status ${checkResponse.status}`);
-      // Try to parse JSON, but catch errors if body is not valid JSON (e.g., HTML error page)
-      let checkData: any = {};
-      try {
-          checkData = await checkResponse.json();
-          console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /sign-up response body:`, checkData);
-      } catch (jsonError) {
-           console.error(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Failed to parse /sign-up JSON response:`, jsonError);
-           if (checkResponse.ok) { throw new Error("Backend sign-up responded ok, but with invalid JSON."); }
-           // If not ok and not JSON, construct error from status
-      }
-      // Check response status *after* logging it
-      if (!checkResponse.ok && checkData.message !== 'Username or email is already registered') {
-        throw new Error(checkData.message || `Backend sign-up failed with status ${checkResponse.status}`);
-      }
+        try {
+            // 1. Make a SINGLE call to our new, intelligent backend endpoint
+            console.log(`[${Date.now() - initialTimeRef.current}ms] Calling POST ${API_BASE_URL}/process-login...`);
+            const response = await fetch(`${API_BASE_URL}/process-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    auth_token: Auth0Token,
+                    nickname: Nickname,
+                    email: Email,
+                    full_name: FullName,
+                    profile_picture: ProfilePicture,
+                }),
+            });
 
-      // 2. Get application's JWT token
-      console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Calling POST ${API_BASE_URL}/set-username...`);
-      const setUsernameResponse = await fetch(`${API_BASE_URL}/set-username`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth_token: Auth0Token }),
-      });
-      console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /set-username responded status ${setUsernameResponse.status}`);
-      let setUsernameData: any = {};
-       try {
-            setUsernameData = await setUsernameResponse.json();
-            console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /set-username response body:`, setUsernameData);
-        } catch (jsonError) {
-             console.error(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Failed to parse /set-username JSON response:`, jsonError);
-             if (setUsernameResponse.ok) { throw new Error("Backend set-username responded ok, but with invalid JSON."); }
+            console.log(`[${Date.now() - initialTimeRef.current}ms] /process-login responded status ${response.status}`);
+            const data = await response.json();
+            console.log(`[${Date.now() - initialTimeRef.current}ms] /process-login response body:`, data);
+
+            // 2. Check if the backend call itself was successful
+            if (!response.ok || data.status !== 'Success') {
+                throw new Error(data.message || `Backend process failed with status ${response.status}`);
+            }
+
+            // 3. Handle the different success scenarios
+            if (data.needsReactivation) {
+                // User exists but is deactivated
+                console.log(`[${Date.now() - initialTimeRef.current}ms] Account is deactivated. Prompting for reactivation.`);
+                promptForReactivation(data.username); // Use the username returned from backend
+                return; // Stop processing, the prompt will handle navigation
+            }
+
+            if (!data.token) {
+                throw new Error("Login process succeeded but did not return a token.");
+            }
+
+            // User is active, set the token
+            setUserToken(data.token);
+            console.log(`[${Date.now() - initialTimeRef.current}ms] App JWT token set.`);
+
+            // 4. Determine where to navigate
+            if (data.isNewUser) {
+                console.log(`[${Date.now() - initialTimeRef.current}ms] New user registered. Navigating to preferences.`);
+                setNavigationTarget('/preferences');
+            } else {
+                console.log(`[${Date.now() - initialTimeRef.current}ms] Existing active user. Navigating home.`);
+                setNavigationTarget('/');
+            }
+
+        } catch (error) {
+            // Log the specific error before re-throwing
+            console.error(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Error during backend interaction:`, error);
+            throw new Error(`Failed to update your profile: ${error instanceof Error ? error.message : 'Unknown backend error'}`);
+        } finally {
+            // Set loading false *only if* not waiting for reactivation prompt
+            if (navigationTarget !== null) {
+                console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Setting loading false (navigation target set).`);
+                setIsLoading(false);
+            } else {
+                console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Finished, but navigationTarget not set (likely waiting for prompt).`);
+            }
         }
-      // Check status and data validity
-      if (!setUsernameResponse.ok || setUsernameData.status !== 'Success' || !setUsernameData.token) {
-         throw new Error(setUsernameData.message || 'Could not finalize login session.');
-      }
-      setUserToken(setUsernameData.token); // Set token *before* potentially long activation check
-      console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: App JWT token set.`);
-
-
-      // 3. Handle activation status / navigation target
-      if (checkData.message === 'Username or email is already registered') {
-        console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Calling POST ${API_BASE_URL}/check-login...`);
-        const activationStatusResponse = await fetch(`${API_BASE_URL}/check-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: Nickname, auth_token: Auth0Token }),
-        });
-        console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /check-login responded status ${activationStatusResponse.status}`);
-        let activationStatusData: any = {};
-         try {
-              activationStatusData = await activationStatusResponse.json();
-              console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: /check-login response body:`, activationStatusData);
-          } catch (jsonError) {
-               console.error(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Failed to parse /check-login JSON response:`, jsonError);
-                if (activationStatusResponse.ok) { throw new Error("Backend check-login responded ok, but with invalid JSON."); }
-          }
-
-        if (!activationStatusResponse.ok) {
-             console.warn(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Failed to check activation status: ${activationStatusData.message || `Status ${activationStatusResponse.status}`}. Proceeding to home.`);
-             setNavigationTarget('/'); // Proceed home even if check fails, as login itself succeeded
-             return;
-        }
-
-        if (activationStatusData.message === 'Account is deactivated') {
-          console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Account is deactivated. Prompting for reactivation.`);
-          promptForReactivation(Nickname); // This now handles its own loading/navigation
-          return; // Stop further processing here as prompt takes over
-        } else {
-          console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Existing active user. Navigating home.`);
-          setNavigationTarget('/'); // Active existing user
-        }
-      } else if (checkData.message === 'New user registered') {
-        console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: New user registered. Navigating to preferences.`);
-        setNavigationTarget('/preferences'); // New user
-      } else {
-           console.warn(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Unexpected /sign-up message ('${checkData.message}'). Navigating home.`);
-           setNavigationTarget('/'); // Fallback
-      }
-
-    } catch (error) {
-        // Log the specific error before re-throwing
-        console.error(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Error during backend interaction:`, error);
-        // Check if it's the specific backend error we saw
-        if (error instanceof Error && error.message.includes('Body not allowed for GET or HEAD requests')) {
-             throw error; // Re-throw the specific error to be handled by getFriendlyErrorMessage
-        }
-        // Otherwise, throw the standard profile update error
-        throw new Error(`Failed to update your profile: ${error instanceof Error ? error.message : 'Unknown backend error'}`);
-    } finally {
-        // Set loading false *only if* not waiting for reactivation prompt
-        if (navigationTarget !== null) {
-             console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Setting loading false (navigation target set).`);
-             setIsLoading(false);
-        } else {
-             console.log(`[${Date.now() - initialTimeRef.current}ms] handleUserRegistrationOrLogin: Finished, but navigationTarget not set (likely waiting for prompt).`);
-             // Loading should eventually be set to false by promptForReactivation/handleReactivation in this case
-        }
-    }
-  };
+    };
 
    // --- Handle Reactivation Prompt ---
    const promptForReactivation = (nickname: string) => {

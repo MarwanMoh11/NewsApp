@@ -1719,6 +1719,84 @@ router.get('/get-region', (req, res) => {
   });
 });
 
+**
+* @route POST /process-login
+* @description A single endpoint to handle user registration or login.
+* It checks if a user exists by their Auth0 token. If not, it creates them.
+* In both cases, it returns the application's custom JWT.
+* @access Public (receives Auth0 user data)
+*/
+router.post('/process-login', async (req, res) => {
+    const { auth_token, nickname, email, full_name, profile_picture } = req.body;
+
+    // --- Input Validation ---
+    if (!auth_token || !nickname || !email) {
+        return res.status(400).json({ status: 'Error', message: 'auth_token, nickname, and email are required.' });
+    }
+
+    try {
+        // --- Step 1: Check if user exists by auth_token ---
+        const checkUserQuery = 'SELECT username, deactivated FROM Users_new WHERE auth_token = ? LIMIT 1';
+        const [existingUsers] = await poolPromise.query(checkUserQuery, [auth_token]);
+
+        let userToTokenize;
+        let isNewUser = false;
+
+        if (existingUsers.length > 0) {
+            // --- User Exists ---
+            console.log(`[process-login] Existing user found: ${existingUsers[0].username}`);
+            const existingUser = existingUsers[0];
+
+            // Check if the account is deactivated
+            if (existingUser.deactivated === 1) {
+                console.log(`[process-login] Account for ${existingUser.username} is deactivated.`);
+                // Send a specific status that the frontend can check
+                return res.status(200).json({ status: 'Success', needsReactivation: true, username: existingUser.username });
+            }
+            userToTokenize = existingUser;
+
+        } else {
+            // --- New User: Need to register them ---
+            console.log(`[process-login] New user. Attempting to register with nickname: ${nickname}`);
+
+            // Double-check that the desired nickname isn't already taken by someone else
+            const checkNicknameQuery = 'SELECT id FROM Users_new WHERE username = ?';
+            const [nicknameClash] = await poolPromise.query(checkNicknameQuery, [nickname]);
+            if (nicknameClash.length > 0) {
+                // This is a rare edge case but important to handle.
+                console.error(`[process-login] Nickname '${nickname}' already taken, but auth_token is new.`);
+                return res.status(409).json({ status: 'Error', message: `Username '${nickname}' is already taken. Please try logging in differently.` });
+            }
+
+            // Insert the new user
+            const insertQuery = `
+        INSERT INTO Users_new (username, email, auth_token, full_name, profile_picture)
+        VALUES (?, ?, ?, ?, ?);
+      `;
+            await poolPromise.query(insertQuery, [nickname, email, auth_token, full_name, profile_picture]);
+            console.log(`[process-login] New user '${nickname}' registered successfully.`);
+
+            userToTokenize = { username: nickname };
+            isNewUser = true;
+        }
+
+        // --- Step 2: Create and return the custom JWT ---
+        // By this point, userToTokenize is guaranteed to have a username.
+        const customAppToken = signUserData(userToTokenize.username, null, null, null);
+
+        return res.status(200).json({
+            status: 'Success',
+            token: customAppToken,
+            isNewUser: isNewUser, // Let the frontend know if it was a registration
+            needsReactivation: false
+        });
+
+    } catch (error) {
+        console.error('[process-login] An error occurred:', error);
+        return res.status(500).json({ status: 'Error', message: 'An internal server error occurred.' });
+    }
+});
+
 
 router.post('/set-region', (req, res) => {
   // Extract username and new region from the request body
