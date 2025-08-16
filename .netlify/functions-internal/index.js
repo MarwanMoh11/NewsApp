@@ -1781,6 +1781,54 @@ router.post('/process-login', async (req, res) => {
 });
 
 
+router.post('/choose-username', async (req, res) => {
+    try {
+        const { auth_token, new_username, email, full_name, profile_picture } = req.body ?? {};
+
+        // Basic validation
+        if (!auth_token || !new_username || !email) {
+            return res.status(400).json({ status: 'Error', message: 'auth_token, new_username, and email are required.' });
+        }
+        const usernameClean = String(new_username).trim();
+
+        if (usernameClean.length < 3 || usernameClean.length > 20 || !/^[a-zA-Z0-9_]+$/.test(usernameClean)) {
+            return res.status(400).json({ status: 'Error', message: 'Invalid username format.' });
+        }
+
+        // Query by auth_token (existing user?)
+        const checkTokenQuery = 'SELECT username, deactivated FROM Users_new WHERE auth_token = ? LIMIT 1';
+        const [existingByToken] = await poolPromise.query(checkTokenQuery, [auth_token]);
+
+        if (existingByToken.length > 0) {
+            const existing = existingByToken[0];
+            if (existing.deactivated === 1) {
+                return res.status(200).json({ status: 'Success', needsReactivation: true, username: existing.username });
+            }
+            const customAppToken = signUserData(existing.username, null, null, null);
+            return res.status(200).json({ status: 'Success', token: customAppToken, isNewUser: false, needsReactivation: false });
+        }
+
+        // Check if desired username exists
+        const [nameClash] = await poolPromise.query('SELECT id FROM Users_new WHERE username = ? LIMIT 1', [usernameClean]);
+        if (nameClash.length > 0) {
+            return res.status(409).json({ status: 'Error', code: 'USERNAME_TAKEN', message: `Username '${usernameClean}' is already taken.` });
+        }
+
+        // Insert new user
+        const insertQuery = `
+      INSERT INTO Users_new (username, email, auth_token, full_name, profile_picture)
+      VALUES (?, ?, ?, ?, ?);
+    `;
+        await poolPromise.query(insertQuery, [usernameClean, email, auth_token, full_name || null, profile_picture || null]);
+
+        const customAppToken = signUserData(usernameClean, email, null, null);
+        return res.status(200).json({ status: 'Success', token: customAppToken, isNewUser: true, needsReactivation: false });
+    } catch (error) {
+        console.error('[choose-username] Error:', error);
+        return res.status(500).json({ status: 'Error', message: 'An internal server error occurred.' });
+    }
+});
+
 router.post('/set-region', (req, res) => {
   // Extract username and new region from the request body
   const { username, region } = req.body;
