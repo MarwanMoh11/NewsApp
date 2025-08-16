@@ -182,9 +182,7 @@ const LoginStatus: React.FC = () => {
         const exchangeStartTime = Date.now();
         const tokenEndpoint = `https://${AUTH0_DOMAIN}/oauth/token`;
 
-        const redirectUri = Platform.OS === 'web'
-            ? makeRedirectUri({ path: REDIRECT_PATH, useProxy: false })
-            : makeRedirectUri({ path: REDIRECT_PATH, useProxy: true });
+        const redirectUri = makeRedirectUri({ path: REDIRECT_PATH });
 
         console.log(`[${Date.now() - initialTimeRef.current}ms] exchangeCodeForToken: Using redirectUri: ${redirectUri}`);
 
@@ -485,7 +483,7 @@ const LoginStatus: React.FC = () => {
     useEffect(() => {
         if (navigationTarget) {
             console.log(`[${Date.now() - initialTimeRef.current}ms] Navigation useEffect: Navigating to ${navigationTarget}`);
-            router.replace(navigationTarget);
+            router.replace(navigationTarget as any);
             // Let router handle state - do not clear navigationTarget immediately
         }
     }, [navigationTarget, router]);
