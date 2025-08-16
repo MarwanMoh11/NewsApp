@@ -14,6 +14,8 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   SafeAreaView,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { UserContext } from '../app/UserContext'; // Adjust path if needed
@@ -83,6 +85,12 @@ const LoginStatus: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showRetry, setShowRetry] = useState(false);
   const [navigationTarget, setNavigationTarget] = useState<string | null>(null);
+  // Username clash & modal state
+  const [showUsernameModal, setShowUsernameModal] = useState(false);
+  const [proposedUsername, setProposedUsername] = useState('');
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [isChoosingUsername, setIsChoosingUsername] = useState(false);
+  const pendingAuthInfoRef = useRef<{ authToken: string; email?: string; fullName?: string; profilePicture?: string } | null>(null);
 
   // Ref to prevent processing the same code multiple times if component re-renders quickly
   const codeProcessedRef = useRef(false);
@@ -305,6 +313,20 @@ const LoginStatus: React.FC = () => {
             const data = await response.json();
             console.log(`[${Date.now() - initialTimeRef.current}ms] /process-login response body:`, data);
 
+            // Handle username clash explicitly
+            if (response.status === 409 && data?.code === 'USERNAME_TAKEN') {
+                console.warn(`[${Date.now() - initialTimeRef.current}ms] Username clash detected for '${Nickname}'. Prompting user for a new username.`);
+                // Store auth context for the follow-up call
+                pendingAuthInfoRef.current = { authToken: Auth0Token, email: Email, fullName: FullName, profilePicture: ProfilePicture };
+                // Seed an initial proposal (append random digits)
+                const seed = `${Nickname.replace(/[^a-zA-Z0-9_]/g, '').slice(0, 15)}${Math.floor(Math.random() * 900 + 100)}`;
+                setProposedUsername(seed);
+                setUsernameError(null);
+                setShowUsernameModal(true);
+                setIsLoading(false);
+                return; // stop normal flow here; modal will handle the rest
+            }
+
             // 2. Check if the backend call itself was successful
             if (!response.ok || data.status !== 'Success') {
                 throw new Error(data.message || `Backend process failed with status ${response.status}`);
@@ -445,6 +467,68 @@ const LoginStatus: React.FC = () => {
 
 
   // --- Retry / Go Back Logic ---
+  const validateUsername = (name: string): string | null => {
+    const trimmed = name.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) return 'Username must be 3-20 characters.';
+    if (!/^[a-zA-Z0-9_]+$/.test(trimmed)) return 'Only letters, numbers, and underscores are allowed.';
+    return null;
+  };
+
+  const submitChosenUsername = async () => {
+    if (isChoosingUsername) return;
+    const err = validateUsername(proposedUsername);
+    if (err) { setUsernameError(err); return; }
+    setUsernameError(null);
+    setIsChoosingUsername(true);
+    setErrorMessage(null);
+    setShowRetry(false);
+
+    try {
+      const authInfo = pendingAuthInfoRef.current;
+      if (!authInfo) { throw new Error('Missing auth context for setting username.'); }
+      const response = await fetch(`${API_BASE_URL}/choose-username`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          auth_token: authInfo.authToken,
+          new_username: proposedUsername.trim(),
+          email: authInfo.email,
+          full_name: authInfo.fullName,
+          profile_picture: authInfo.profilePicture,
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.status !== 'Success') {
+        if (response.status === 409 && data.code === 'USERNAME_TAKEN') {
+          setUsernameError('That username is taken. Please try another.');
+          return;
+        }
+        throw new Error(data.message || `Failed to set username (status ${response.status})`);
+      }
+
+      // Success
+      if (data.needsReactivation) {
+        setShowUsernameModal(false);
+        promptForReactivation(proposedUsername.trim());
+        return;
+      }
+
+      if (!data.token) {
+        throw new Error('Username set succeeded but token missing.');
+      }
+
+      setUserToken(data.token);
+      setShowUsernameModal(false);
+      setNavigationTarget('/preferences');
+    } catch (error) {
+      setErrorMessage(getFriendlyErrorMessage(error));
+      setShowRetry(true);
+    } finally {
+      setIsChoosingUsername(false);
+      setIsLoading(false);
+    }
+  };
+
   const handleRetry = () => {
     console.log(`[${Date.now() - initialTimeRef.current}ms] handleRetry: Navigating back to /`);
     router.replace('/'); // Go back to login start
