@@ -1748,7 +1748,7 @@ router.post('/process-login', async (req, res) => {
             if (nicknameClash.length > 0) {
                 // This is a rare edge case but important to handle.
                 console.error(`[process-login] Nickname '${nickname}' already taken, but auth_token is new.`);
-                return res.status(409).json({ status: 'Error', code: 'USERNAME_TAKEN', message: `Username '${nickname}' is already taken.` });
+                return res.status(409).json({ status: 'Error', message: `Username '${nickname}' is already taken. Please try logging in differently.` });
             }
 
             // Insert the new user
@@ -1778,46 +1778,6 @@ router.post('/process-login', async (req, res) => {
         console.error('[process-login] An error occurred:', error);
         return res.status(500).json({ status: 'Error', message: 'An internal server error occurred.' });
     }
-});
-
-// New endpoint to allow choosing a different username after a clash
-router.post('/choose-username', async (req, res) => {
-  const { auth_token, new_username, email, full_name, profile_picture } = req.body;
-  if (!auth_token || !new_username || !email) {
-    return res.status(400).json({ status: 'Error', message: 'auth_token, new_username, and email are required.' });
-  }
-  try {
-    // If auth_token already exists, treat as existing user
-    const checkTokenQuery = 'SELECT username, deactivated FROM Users_new WHERE auth_token = ? LIMIT 1';
-    const [existingByToken] = await poolPromise.query(checkTokenQuery, [auth_token]);
-    if (existingByToken.length > 0) {
-      const existing = existingByToken[0];
-      if (existing.deactivated === 1) {
-        return res.status(200).json({ status: 'Success', needsReactivation: true, username: existing.username });
-      }
-      const customAppToken = signUserData(existing.username, null, null, null);
-      return res.status(200).json({ status: 'Success', token: customAppToken, isNewUser: false, needsReactivation: false });
-    }
-
-    // Ensure desired new_username is available
-    const [nameClash] = await poolPromise.query('SELECT id FROM Users_new WHERE username = ? LIMIT 1', [new_username]);
-    if (nameClash.length > 0) {
-      return res.status(409).json({ status: 'Error', code: 'USERNAME_TAKEN', message: `Username '${new_username}' is already taken.` });
-    }
-
-    // Insert new user with selected username
-    const insertQuery = `
-      INSERT INTO Users_new (username, email, auth_token, full_name, profile_picture)
-      VALUES (?, ?, ?, ?, ?);
-    `;
-    await poolPromise.query(insertQuery, [new_username, email, auth_token, full_name, profile_picture]);
-
-    const customAppToken = signUserData(new_username, null, null, null);
-    return res.status(200).json({ status: 'Success', token: customAppToken, isNewUser: true, needsReactivation: false });
-  } catch (error) {
-    console.error('[choose-username] An error occurred:', error);
-    return res.status(500).json({ status: 'Error', message: 'An internal server error occurred.' });
-  }
 });
 
 
