@@ -551,5 +551,5 @@ const styles = StyleSheet.create({
       textAlign: 'center',
   },
 });
-
+// test
 export default LoginStatus;
